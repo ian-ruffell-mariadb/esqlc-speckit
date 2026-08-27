@@ -1,0 +1,132 @@
+# Feature Spec: INVOKE schema-derived structures
+
+**ID:** 006-invoke-schema-gen · **Status:** Clarifying
+**Manual coverage:** §2 pp.2-18..2-24; App. A (sample database, as fixture source)
+**Depends on:** 001, 002, 003
+
+## 1. Problem
+
+`INVOKE` generates a C structure describing a table or view, so that a program's
+host variables track the schema instead of duplicating it by hand. It is how real
+programs are written — the manual's own advantages list is essentially "you stop
+making transcription errors" — and it is the reason hand-written declare sections
+are the exception rather than the rule in customer code.
+
+It also means the preprocessor needs schema access at preprocess time. That is a
+different capability from anything in 001–005: a connection, or a schema cache,
+during compilation rather than at run time. And the structures it generates must
+follow 002's mapping exactly, including the extra null-terminator byte and its
+suppression under `CHAR_AS_ARRAY`, plus a parallel indicator structure when
+requested.
+
+## 2. Scope
+
+**In scope**
+
+- The `INVOKE` directive in declaration position.
+- Schema retrieval at preprocess time, and its caching.
+- Structure generation: field naming derived from column names, types per 002.
+- The extra byte appended to character fields, and its suppression under
+  `CHAR_AS_ARRAY`.
+- `VARCHAR` columns generating the nested `{ short len; char val[]; }` form.
+- Indicator variable generation for `INVOKE`ed structures.
+- The App. A sample database, reproduced as a MariaDB schema for use as the
+  conformance suite's fixture.
+
+**Out of scope**
+
+- The type mapping itself → 002
+- `INVOKE` with SQLCI → 008
+- Dynamic descriptors → 007
+- Guardian object naming and TACL DEFINEs in the invoked name → 008 (`DIV-002`)
+
+## 3. Requirements
+
+| ID | Requirement | Citation |
+|----|-------------|----------|
+| FR-006.1 | `INVOKE` is accepted in declaration position and generates a structure describing the named table or view. | `[SQLPM/C §2 p.2-18]`, `[SQLPM/C §3 p.3-2]` |
+| FR-006.2 | Generated field names derive from column names; generated types follow the 002 mapping. | `[SQLPM/C §2 pp.2-19..2-21]` |
+| FR-006.3 | Character fields receive the extra null-terminator placeholder byte unless the SQL pragma specifies `CHAR_AS_ARRAY`. | `[SQLPM/C §2 p.2-7]` |
+| FR-006.4 | A `VARCHAR` column generates a nested structure whose group name derives from the column name, with subordinate `len` (`short`) and `val` (character array), `val` carrying the extra byte when `CHAR_AS_STRING` is in effect. | `[SQLPM/C §2 p.2-9]` |
+| FR-006.5 | Indicator variables can be generated alongside the structure and are usable with the generated fields. | `[SQLPM/C §2 p.2-22]` |
+| FR-006.6 | A referenced table or view that does not exist, or is unreadable, is a preprocess-time error naming the object. | Principle III |
+| FR-006.7 | The schema used for generation is recorded in the listing output so that a compiled program's assumed schema is auditable. | derived from `[SQLPM/C §6 p.6-25]` |
+| FR-006.8 | Individual generated fields are referenceable as `:structname.field`; the structure name itself is referenceable only for the `VARCHAR` case. | `[SQLPM/C §2 pp.2-9, 2-10]` |
+| NFR-006.1 | The App. A sample database is available as a MariaDB schema and seed dataset, and is the fixture base for features 004, 005, and 007. | Principle IV |
+| NFR-006.2 | Schema access at preprocess time is optional-by-cache: a build can run against a cached schema with no live database. | — |
+
+## 4. Acceptance scenarios
+
+### AS-006.1 — Generated structure matches a hand-written one
+- **Given** a table exercising every type in the 002 mapping
+- **When** declared once by `INVOKE` and once by hand
+- **Then** the two structures have identical layout, verified by `offsetof` and
+  `sizeof` assertions on every field
+- **Test:** `tests/conformance/006/invoke_vs_hand.sqlc`
+
+### AS-006.2 — CHAR_AS_ARRAY suppresses the extra byte
+- **Given** a `CHAR(20)` column
+- **When** `INVOKE`d under `CHAR_AS_STRING` and again under `CHAR_AS_ARRAY`
+- **Then** the field is 21 bytes and 20 bytes respectively
+- **Test:** `tests/conformance/006/char_as_array.sqlc`
+
+### AS-006.3 — VARCHAR nesting
+- **Given** a `VARCHAR(26)` column
+- **When** `INVOKE`d
+- **Then** a nested structure with a `short len` and a 27-byte `val` is generated,
+  and the group name is usable directly as a host variable
+- **Test:** `tests/conformance/006/invoke_varchar.sqlc`
+
+### AS-006.4 — Missing table
+- **Given** an `INVOKE` of a nonexistent table
+- **When** preprocessed
+- **Then** an error naming the object, and no output file
+- **Test:** `tests/conformance/006/negative/invoke_missing.sqlc`
+
+### AS-006.5 — Offline build from cache
+- **Given** a populated schema cache and no reachable database
+- **When** preprocessed
+- **Then** it succeeds and produces the same output as the online build
+- **Test:** `tests/conformance/006/offline_cache.sh`
+
+## 5. Diagnostics
+
+| Code | Condition | Default policy | Citation |
+|------|-----------|----------------|----------|
+| `ESQLC-6001` | Invoked object does not exist | error | Principle III |
+| `ESQLC-6002` | No schema source available (no connection, no cache) | error | Principle III |
+| `ESQLC-6003` | Column type has no mapping in the 002 table | error | `[§2 pp.2-3..2-4]` |
+| `ESQLC-6004` | Column name cannot be transformed into a valid, unique C identifier | error | `[§2 p.2-19]` |
+| `ESQLC-6005` | Cached schema is stale relative to a reachable database | warn | Principle III |
+| `ESQLC-6006` | `INVOKE` outside declaration position | error | `[§3 p.3-2]` |
+
+`ESQLC-6005` is a warning rather than an error so that offline builds remain
+possible, but it must be loud: a stale schema produces structures that mismatch
+the database at run time, which is exactly the failure mode `INVOKE` exists to
+prevent.
+
+## 6. Open questions
+
+| # | Question | Blocks | Resolution |
+|---|----------|--------|------------|
+| Q1 | Exact column-name-to-field-name transformation rule, including case handling and characters invalid in C identifiers. | FR-006.2, `ESQLC-6004` | pending — read §2 pp.2-19..2-21 during `/speckit.plan` |
+| Q2 | Exact `INVOKE` syntax, including how indicator generation is requested. | FR-006.1, FR-006.5 | pending — same reading |
+| Q3 | How are indicator variables named and associated with fields? | FR-006.5 | pending — §2 p.2-22 |
+| Q4 | Schema cache format, invalidation, and whether it belongs in version control. | NFR-006.2, `ESQLC-6005` | unresolved — a build-reproducibility decision, not a manual question |
+| Q5 | Does `INVOKE` generate anything for a protection view differently from a table? | FR-006.1 | unresolved |
+
+Q1–Q3 are transcription tasks against pages this spec already identifies, not
+research. They are listed as questions because guessing a naming rule produces
+structures that compile and then mismatch the database.
+
+## 7. Constitution check
+
+| Principle | Compliant? | Note |
+|-----------|-----------|------|
+| I manual is the contract | partial | Q1–Q3 close by transcription; FR-006.7 is derived and marked |
+| II source compatibility | yes | `INVOKE` syntax unchanged; both pragma char options honoured |
+| III no silent semantic change | yes | Missing schema errors rather than generating a guess; stale cache warns loudly |
+| IV manual-derived tests first | yes | AS-006.1 is the strongest available check — cross-validation against 002 |
+| V layered / frozen ABI | yes | Generation is preprocess-time only; no new runtime surface |
+| VI byte-exact structures | yes | AS-006.1 asserts `offsetof` and `sizeof` per field |
+| VII divergence registered | yes | None introduced. `DIV-002` applies if the invoked name is a TACL DEFINE |

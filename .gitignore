@@ -1,0 +1,25 @@
+# The behavioural-contract manual is HP copyright and is fetched locally,
+# never committed. See docs/source-manual.md.
+manual/
+
+# Extraction byproducts
+*.pyc
+__pycache__/
+.venv/
+
+# Build output
+build/
+*.o
+*.a
+*.so
+*.dylib
+
+# Preprocessor output from test runs
+tests/**/*.actual.c
+tests/**/*.actual.diag
+
+# Schema cache (feature 006) — decision pending, see 006 Q4
+.esqlc-schema-cache/
+
+# macOS
+.DS_Store
