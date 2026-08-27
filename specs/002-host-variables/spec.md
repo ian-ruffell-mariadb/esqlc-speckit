@@ -158,7 +158,7 @@ unresolved question below.
 
 | # | Question | Blocks | Resolution |
 |---|----------|--------|------------|
-| Q1 | What are SQL/MP's actual `sqlcode` warning values for truncation and the two scale-loss conditions? The manual names the conditions but not the codes. | FR-002.23, .26, .27 | unresolved — must be sourced from `SQLRM` or the SQL message file, or chosen and registered as a divergence |
+| Q1 | What are SQL/MP's actual `sqlcode` warning values for truncation and the two scale-loss conditions? The manual names the conditions but not the codes. | FR-002.23, .26, .27 | unresolved — `DIV-042`. Confirmed absent from the C manual: it carries exactly one numbered warning (4315, unrelated — similarity checks). Needs `SQLRM` or the SQL message file, else values are chosen and published |
 | Q2 | Does `SETSCALE`'s effect persist beyond the statement containing it? | FR-002.18 | unresolved |
 | Q3 | Is C `fixed` a real HP C type this project should implement, or a NonStop compiler extension to be shimmed? | FR-002.19 | unresolved — `[EXTERNAL — CPG]` |
 | Q4 | How are `KANJI`, `KSC5601`, and the ISO 8859 sets mapped onto MariaDB character sets, and what happens for `UNKNOWN`? | FR-002.4, .8 | unresolved — likely a new divergence |
@@ -177,4 +177,4 @@ on, so inventing them silently would breach Principle III; inventing them
 | IV manual-derived tests first | yes | NFR-002.1 requires a round trip per mapping row |
 | V layered / frozen ABI | yes | Conversion and warning generation live in the runtime; the preprocessor only describes types to it |
 | VI byte-exact structures | yes | NFR-002.2; `VARCHAR` field order and names fixed by FR-002.6 |
-| VII divergence registered | partial | `DIV-001` accepted. Q1 and Q4 will each produce one |
+| VII divergence registered | partial | `DIV-001` accepted, `DIV-042` proposed for Q1. Q4 will produce one |

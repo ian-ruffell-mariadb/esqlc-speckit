@@ -126,4 +126,6 @@ copy, so that diagnostics and `#line` cannot drift apart.
 ## 9. Divergences introduced
 
 None yet. Q2 (the `#pragma SQL` option set frozen to the six documented options)
-becomes `DIV-003` if and when `CPG` is obtained and contradicts the freeze.
+requires a new divergence entry if and when `CPG` is obtained and contradicts the
+freeze. No ID is reserved for it here — an ID is allocated when the entry is
+written, so that every `DIV-nnn` reference in the repo resolves to a real entry.

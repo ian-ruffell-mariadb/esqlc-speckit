@@ -62,8 +62,12 @@ what `INCLUDE STRUCTURES`'s absence generates.
 | FR-007.3 | `DESCRIBE INPUT` returns one `sqlvar` entry per input parameter; `DESCRIBE` returns one per output variable. | `[SQLPM/C §10 pp.10-2, 10-5]` |
 | FR-007.4 | `RELEASE` deallocates a statement prepared through a host variable. | `[SQLPM/C §10 p.10-2]` |
 | FR-007.5 | Dynamic `DECLARE CURSOR` associates a cursor with a prepared `SELECT`; `OPEN` accepts a `USING` clause supplying parameter values. | `[SQLPM/C §10 pp.10-2, 10-20]` |
-| FR-007.6 | `SQLDA_EYE_CATCHER` is `D1`; `SQLDA_HEADER_LEN` is 4; `SQLDA_SQLVAR_LEN` is 24; `SQLDA_NAMESBUF_OVHD_LEN` is 11. | `[SQLPM/C §10 p.10-5]` |
-| FR-007.7 | The names-buffer overhead of 11 bytes comprises a 2-byte length, an 8-byte table name, and a 1-byte separator. | `[SQLPM/C §10 p.10-5]` |
+| FR-007.6 | `SQLDA_EYE_CATCHER` is `D1`; `SQLDA_HEADER_LEN` is 4; `SQLDA_NAMESBUF_OVHD_LEN` is 11; `SQLDA_COLLBUF_OVHD_LEN` is 4. `SQLDA_SQLVAR_LEN` is 40, not the published 24. | `[SQLPM/C §10 pp.10-5, 10-7]` `[DIV-040]` |
+| FR-007.6a | A `sqlvar` entry comprises `data_type`, `data_len`, `precision`, `null_info` as 16-bit fields, followed by `var_ptr`, `ind_ptr`, `cprl_ptr`, and a `reserved` field; the header comprises a 2-byte eye-catcher and a 16-bit `num_entries`. | `[SQLPM/C §10 p.10-7]` |
+| FR-007.6b | The `reserved` fourth address-width field is present and preserved; programs must not assume the entry ends after `cprl_ptr`. | `[SQLPM/C §10 p.10-7]` |
+| FR-007.7 | The names-buffer overhead of 11 bytes comprises a 2-byte length, an 8-byte table name, and a 1-byte separator; the collation-buffer overhead of 4 bytes is the VARCHAR length field. | `[SQLPM/C §10 pp.10-5, 10-7]` |
+| FR-007.7a | Buffer sizes follow the published formulas: names buffer `(name_string_size + 11) × sqlvar_count`, collation buffer `(max_collation_size + 4) × sqlvar_count`. | `[SQLPM/C §10 p.10-7]` |
+| FR-007.7b | An ILP32 build mode preserves the published 24-byte `sqlvar` layout exactly, for programs that cannot absorb `DIV-040`. | `[DIV-040]` |
 | FR-007.8 | `eye_catcher` and `var_ptr` are program-initialised; the implementation never writes to them. | `[SQLPM/C §10 pp.10-5, 10-6]` |
 | FR-007.9 | `num_entries` states the descriptor's capacity in parameters or variables. | `[SQLPM/C §10 p.10-5]` |
 | FR-007.10 | `data_len` for fixed-length character is the byte count; for variable-length character, the maximum byte count. | `[SQLPM/C §10 p.10-6]` |
@@ -86,7 +90,7 @@ what `INCLUDE STRUCTURES`'s absence generates.
 | FR-007.27 | Version 1 and version 2 `SQLDA` layouts are generated, version 2 being the default when `INCLUDE STRUCTURES` is absent. | `[SQLPM/C App. D pp.D-3..D-8]`, `[SQLPM/C §9 p.9-1]` |
 | NFR-007.1 | Every `data_type` code has a round-trip test: describe, allocate, bind, execute, compare. | Principle IV |
 | NFR-007.2 | Every `data_len` and `precision` packing rule has an encode/decode unit test independent of any database. | Principle IV |
-| NFR-007.3 | Every generated `SQLDA` version carries `sizeof` and `offsetof` static assertions, and `SQLDA_SQLVAR_LEN` is asserted equal to 24. | Principle VI |
+| NFR-007.3 | Every generated `SQLDA` version carries `sizeof` and `offsetof` static assertions on every field, asserted against the layout of FR-007.6a. `SQLDA_HEADER_LEN` is asserted equal to 4 in all build modes; `SQLDA_SQLVAR_LEN` is asserted equal to 40 in the default build and 24 in the ILP32 build. | Principle VI, `[DIV-040]` |
 
 ## 4. Acceptance scenarios
 
@@ -159,27 +163,31 @@ what `INCLUDE STRUCTURES`'s absence generates.
 
 | # | Question | Blocks | Resolution |
 |---|----------|--------|------------|
-| Q1 | `SQLDA` field offsets. `SQLDA_HEADER_LEN` 4 and `SQLDA_SQLVAR_LEN` 24 constrain the layout tightly — is it uniquely determined? Two 2-byte header fields plus a 24-byte entry containing three pointers and four scalars needs checking against the target's pointer width. | FR-007.6, NFR-007.3 | unresolved — and note that `var_ptr` is documented as an *extended address* on NonStop, which is not a 64-bit pointer |
-| Q2 | If `SQLDA_SQLVAR_LEN` 24 cannot hold three 64-bit pointers plus four scalars, what gives — the constant, or the pointer representation? | FR-007.6 | unresolved — this is a hard conflict and needs a registered divergence either way |
-| Q3 | Version 1 and version 2 `SQLDA` layouts and the version-to-version changes from App. D. | FR-007.27 | pending — transcribe App. D during `/speckit.plan` |
-| Q4 | Which encoding does the implementation emit for the duplicated qualifier codes? | FR-007.19 | unresolved — pick the lower value and document |
+| Q1 | `SQLDA` field offsets and whether 24 bytes is uniquely determined. | FR-007.6, NFR-007.3 | **RESOLVED** — §10 p.10-7 publishes the layout. Four 16-bit scalars + four 32-bit address/reserved fields = 24 exactly; header 2 + 2 = 4 exactly. Offsets are fully determined |
+| Q2 | The address fields cannot hold a 64-bit pointer. What gives — the constant, or the representation? | FR-007.6 | **RESOLVED** — `DIV-040`: widen to 64-bit, `SQLDA_SQLVAR_LEN` becomes 40, with an ILP32 build mode (FR-007.7b) preserving 24. Justified by the manual's own instruction to use symbolic identifiers because values change between RVUs |
+| Q3 | Version 1 and version 2 `SQLDA` layouts and the version-to-version changes from App. D. | FR-007.27 | pending — transcribe App. D pp.D-3..D-8 during `/speckit.plan`. Layouts are published there (Examples D-1, D-2), so this is transcription, not research |
+| Q4 | Which encoding does the implementation emit for the duplicated qualifier codes? | FR-007.19 | **RESOLVED** — emit the lower value (6 for second-to-second, 7 for fraction-to-fraction), accept both on input |
 | Q5 | Does `WHENEVER` apply to dynamic statements? Shared with 005 Q5. | — | unresolved |
-| Q6 | Collation buffer format. `output_collations_len` gives its size but the manual's structure for its contents needs locating. | FR-007.17, `ESQLC-7009` | pending — §10 pp.10-3..10-11 |
+| Q6 | Collation buffer format. | FR-007.17, `ESQLC-7009` | **RESOLVED** — §10 p.10-7: collation names are VARCHAR items, buffer sized `(max_collation_size + 4) × sqlvar_count`, the 4 being the VARCHAR length field. New constant `SQLDA_COLLBUF_OVHD_LEN` |
+| Q7 | Setting `data_len` to 0 is documented as a way to ignore scale, deliberately causing truncation. Is this a supported idiom to reproduce? | FR-007.11 | unresolved — `[SQLPM/C §10 pp.10-16, 10-25]`. It is deliberate data loss requested by the program, so Constitution III likely permits it, but it needs an explicit decision |
 
-Q1 and Q2 are the critical path. `SQLDA_SQLVAR_LEN` = 24 with three pointers is
-arithmetically impossible on a 64-bit target, so either the descriptor uses
-32-bit offsets rather than native pointers, or the constant must change and a
-divergence must be registered. This must be settled before any code is written,
-because it determines the shape of every dynamic SQL program's allocation logic.
+Q1, Q2, Q4, and Q6 are closed. The earlier concern that 24 bytes was
+arithmetically impossible was based on an incomplete reading: the entry holds
+**four** address-width fields, not three pointers, and they are declared as
+integers rather than pointer types. The remaining real constraint is only that a
+32-bit field cannot hold a 64-bit host address, which `DIV-040` settles.
+
+Q3 is now known to be transcription of published layouts rather than
+reconstruction. Q7 is newly surfaced by the same reading.
 
 ## 7. Constitution check
 
 | Principle | Compliant? | Note |
 |-----------|-----------|------|
-| I manual is the contract | partial | Q3 and Q6 close by transcription; Q1/Q2 are a genuine conflict between published constants and the target platform |
+| I manual is the contract | partial | Q1, Q2, Q4, Q6 resolved from §10 p.10-7. Q3 is transcription of published App. D layouts; Q5 and Q7 remain open |
 | II source compatibility | yes | All statement forms and all published identifier names preserved; duplicate qualifier codes reproduced rather than tidied |
 | III no silent semantic change | yes | Twelve diagnostics; FR-007.16 forbids dereferencing an invalid `ind_ptr` rather than treating it as a bug |
 | IV manual-derived tests first | yes | NFR-007.1 per type code, NFR-007.2 database-free packing tests |
 | V layered / frozen ABI | yes | Descriptor manipulation is program-side; the runtime consumes descriptors through the ABI |
-| VI byte-exact structures | at risk | NFR-007.3 requires it; Q1/Q2 may make it unachievable for `sqlvar`. Resolve before implementation |
-| VII divergence registered | partial | Q2 will require one. None created yet |
+| VI byte-exact structures | yes | Layout fully determined by FR-007.6a and asserted by NFR-007.3. Exact in the ILP32 mode; exact-by-published-identifier in the default mode via `DIV-040` |
+| VII divergence registered | yes | `DIV-040` registered, `proposed` pending owner sign-off since it redefines a published constant |

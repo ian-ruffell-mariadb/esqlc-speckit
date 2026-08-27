@@ -44,10 +44,70 @@ combination. `[§9 p.9-12]`
 | `SQLCA_EYE_CATCHER` | `CA` |
 | `SQLCA_LEN` | 430 |
 
-The program initialises the eye-catcher; SQL/MP does not. Field-level content is
-documented indirectly, via the `SQLCAGETINFOLIST` item codes in §5 — feature 005
-must work from there, not from a field list in §9, because §9 does not provide
-one.
+The program initialises the eye-catcher; SQL/MP does not.
+
+### No published layout
+
+The manual gives **no SQLCA field list and no offsets anywhere** — only the
+430-byte total, the eye-catcher, and the `EXTERNAL` declaration form
+(`extern struct SQLCA_TYPE sqlca;`). This is not an omission in this reference
+sheet; it is absent from the source document.
+
+The practical consequence is favourable: since no conforming program can index
+fields the manual never documents, **`SQLCAGETINFOLIST` and its siblings are the
+only sanctioned access path**, and this project is free to choose its own
+430-byte layout. See `DIV-041`.
+
+### Content inventory, via `SQLCAGETINFOLIST` item codes `[§5 pp.5-11..5-12]`
+
+This is the closest thing to a field list the manual provides. 29 item codes; a
+size in parentheses means "as reported by the referenced item code".
+
+| Item | Size | Content |
+|---|---|---|
+| 1 | 2 | SQLCA version |
+| 2 | 2 | Maximum errors/warnings representable |
+| 3 | 2 | Actual error/warning count |
+| 4 | 2 | Overflow flag: more errors than storable (0 = no) |
+| 5 | 2 | Overflow flag: more parameters than storable (0 = no) |
+| 6, 7 | 2, 2 | Max and actual length of the containing paragraph's name |
+| 8 | (7) | Program ID where the statement appears |
+| 9 | 4 | Source line number of the offending statement |
+| 10 | 2 | Syntax error location, or `-1` if none |
+| 11, 12 | 2, 2 | Max and actual length of the procedure that set the first diagnostic |
+| 13 | (12) | Location of that procedure |
+| 14, 15 | 2, 2 | Max length and used bytes of the parameter buffer |
+| 16 | (15) | Parameter buffer |
+| 17, 18 | 2, 2 | Max length and used bytes of the source name buffer |
+| 19 | (18) | Source name buffer |
+| 20 | 4 | Rows processed |
+| 21 | 8 | Estimated query cost |
+| 22 | 2 | Error or warning number — **errors positive, warnings negative** |
+| 23 | 2 | Subsystem ID (see below) |
+| 24 | 2 | Suppress-printing flag |
+| 25 | 2 | Offset into the parameter buffer, or `-1` if no parameters |
+| 26 | 2 | Parameter count for this diagnostic |
+| 27 | 2 | Sequence in which this diagnostic was set |
+| 28 | 2 | Size of the zero-delimited parameter buffer |
+| 29 | (28) | Zero-delimited parameter buffer; each entry starts on an even word boundary and is preceded by 2 bytes |
+
+> **Sign-convention trap.** Item 22 reports errors as **positive** and warnings
+> as **negative** — the inverse of `sqlcode`, where errors are negative and
+> warnings positive (§9 p.9-6). Any code bridging the two must flip the sign.
+> A test must pin this in both directions.
+
+Subsystem ID (item 23) is two bytes: the first is zero, the second a letter
+identifying the reporting component — `S` for an SQL/MP component (compiler,
+catalog manager, executor, SQLUTIL, SQLCI/SQLCI2), `F` SQL file system, `D` DP2
+disk process, `G` NonStop OS, `R` FastSort/SORTPROG, `L` load routines, `I`
+sequential I/O procedures.
+
+### `SQLCAGETINFOLIST` error codes `[§5 p.5-11]`
+
+8510 missing required parameter · 8511 invalid item code · 8512 invalid SQLCA ·
+8513 SQLCA version newer than the procedure · 8514 insufficient buffer ·
+8515 error-entry index out of range · 8516 `names_max` ≤ 0 ·
+8517 `params_max` ≤ 0.
 
 Access procedures `[§9 p.9-12]`:
 
@@ -77,29 +137,75 @@ require program-side accumulators. `[§9 pp.9-13, 9-14]`
 | `SQLSA_EYE_CATCHER` | `SA` |
 | `SQLSA_LEN` | 838 (versions 300–325) or 1790 (version 330+) |
 
-### Fields `[§9 pp.9-17..9-18]`
+### Layout `[§9 pp.9-15..9-18]`
 
-Header: `eye_catcher`, `version`.
+**`dml` and `prepare` are arms of a `union`, not coexisting substructures.**
+Only one is meaningful at a time, decided by the statement class that last ran
+(§9 p.9-13). Reading `prepare` after a DML statement reads the wrong arm and
+yields garbage, not zeros — which is the mechanism behind the "undefined after
+DSL/DDL/DCL/transaction control" rule.
 
-`dml` substructure:
+Field alignment is **packed**, not natural. This is not a stylistic note: it is
+the only way the published sizes are reachable (see the arithmetic below), and it
+is why v330+ carries a `fieldalign cshared2` pragma.
 
-| Field | Meaning |
-|---|---|
-| `num_tables` | tables accessed by the statement; max 16 |
-| `master_executor_elapsed_time` | master Executor CPU µs — v330+ only |
-| `total_esp_cpu_time` | total ESP CPU µs — v330+ only |
-| `total_sortprog_cpu_time` | total SORTPROG CPU µs — v330+ only |
-| `stats[]` | `num_tables` valid entries, one per table |
+#### Version 300–325 — 838 bytes
 
-`stats[]` entries: `table_name` (Guardian internal file name),
-`records_accessed`, `records_used`, `disc_reads`, `messages`, `message_bytes`,
-`waits` (lock waits or timeouts), `escalations` (record→file lock escalations),
-`sqlsa_reserved`, `vsbb_write`, `vsbb_flushed`. The two VSBB flags use `-1` for
-true and `0` for false.
+| Region | Fields | Bytes |
+|---|---|---|
+| header | `eye_catcher[2]`, `version` (short) | 4 |
+| `u.dml` | `num_tables` (short) | 2 |
+| `u.dml.stats[16]` | 16 × entry below | 832 |
 
-`prepare` substructure (dynamic SQL only): `input_num`, `input_names_len`,
-`output_num`, `output_names_len`, `name_map_len` (reserved),
-`sql_statement_type`, `output_collations_len`.
+`stats[]` entry — 52 bytes:
+
+| Field | Type | Bytes |
+|---|---|---|
+| `table_name` | char[24] | 24 |
+| `records_accessed`, `records_used`, `disc_reads`, `messages`, `message_bytes` | long (32-bit) | 20 |
+| `waits`, `escalations` | short | 4 |
+| `sqlsa_reserved` | char[4] | 4 |
+
+`4 + 2 + (16 × 52) = 838` ✓. Natural alignment would pad `num_tables` to a
+4-byte boundary and yield 840, so packed alignment is mandatory.
+
+Note there are **no VSBB flags in this version** — that 4-byte slot is
+`sqlsa_reserved`.
+
+#### Version 330 or later — 1790 bytes
+
+| Region | Fields | Bytes |
+|---|---|---|
+| header | `eye_catcher[2]`, `version` (short) | 4 |
+| `u.dml` | `num_tables` (short) | 2 |
+| `u.dml` | `master_executor_elapsed_time`, `total_esp_cpu_time`, `total_sortprog_cpu_time` (long long) | 24 |
+| `u.dml` | filler | 32 |
+| `u.dml.stats[16]` | 16 × entry below | 1728 |
+
+`stats[]` entry — 108 bytes:
+
+| Field | Type | Bytes |
+|---|---|---|
+| `table_name` | char[24] | 24 |
+| `records_accessed`, `records_used`, `disc_reads`, `messages`, `message_bytes` | long long | 40 |
+| `waits`, `escalations` | long (32-bit) | 8 |
+| `vsbb_write`, `vsbb_flushed` | short | 4 |
+| filler | char[32] | 32 |
+
+`4 + 2 + 24 + 32 + (16 × 108) = 1790` ✓.
+
+The VSBB flags occupy the 4 bytes that were `sqlsa_reserved` pre-330, and use
+`-1` for true, `0` for false. Note the widening of the five counters from 32 to
+64 bits and of `waits`/`escalations` from 16 to 32 bits across the version
+boundary — a program compiled for one version reading the other's buffer
+misreads every counter.
+
+#### `prepare` arm — both versions, 16 bytes
+
+`input_num`, `input_names_len`, `output_num`, `output_names_len`, `name_map_len`
+(reserved), `sql_statement_type` — all short — then `output_collations_len`
+(long, 32-bit). Far smaller than the `dml` arm, so the union's size is the `dml`
+arm's.
 
 `sql_statement_type` values, declared in the `sqlh` header:
 
@@ -131,6 +237,40 @@ Describes input parameters and output variables for dynamic SQL, alongside a
 | `SQLDA_HEADER_LEN` | 4 | `eye_catcher` + `num_entries` |
 | `SQLDA_SQLVAR_LEN` | 24 | one `sqlvar` entry |
 | `SQLDA_NAMESBUF_OVHD_LEN` | 11 | names-buffer overhead: 2-byte length + 8-byte table name + 1-byte separator |
+| `SQLDA_COLLBUF_OVHD_LEN` | 4 | collation-buffer overhead: the VARCHAR `len` field |
+
+### Layout `[§10 p.10-7]`
+
+| Region | Fields | Type | Bytes |
+|---|---|---|---|
+| header | `eye_catcher[2]` | char[2] | 2 |
+| header | `num_entries` | short | 2 |
+| `sqlvar[n]` | 4 × descriptor scalars | short | 8 |
+| `sqlvar[n]` | 4 × address/reserved | long | 16 |
+
+`sqlvar` entry: `data_type`, `data_len`, `precision`, `null_info` (short each),
+then `var_ptr`, `ind_ptr`, `cprl_ptr`, and a **fourth `reserved` field** — all
+declared `long`, not as C pointer types.
+
+`2 + 2 = 4` = `SQLDA_HEADER_LEN` ✓
+`(4 × 2) + (4 × 4) = 24` = `SQLDA_SQLVAR_LEN` ✓
+
+Two consequences that matter more than they look:
+
+1. The address fields are **32-bit integers holding NonStop extended addresses**,
+   not native pointers. On a 64-bit host they cannot hold a real address, and 24
+   bytes cannot be made to fit four 64-bit fields. See `DIV-040`.
+2. There is a `reserved` field the field-description table (Table 10-3) does not
+   mention. Programs must not assume the entry ends after `cprl_ptr`.
+
+### Buffer sizing formulas `[§10 p.10-7]`
+
+```
+names_buffer_length     = (name_string_size     + SQLDA_NAMESBUF_OVHD_LEN) * sqlvar_count
+collation_buffer_length = (max_collation_size   + SQLDA_COLLBUF_OVHD_LEN) * sqlvar_count
+```
+
+Names and collation names are both returned as VARCHAR items.
 
 ### Fields `[§10 pp.10-5..10-6]`
 

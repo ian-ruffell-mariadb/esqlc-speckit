@@ -65,15 +65,21 @@ MariaDB counterpart.
 | FR-005.12 | `INCLUDE STRUCTURES` must precede any `INCLUDE SQLCA`/`SQLSA`/`SQLDA`; in a multi-procedure unit it belongs in the global or first-procedure declarations and applies unit-wide. | `[SQLPM/C §9 p.9-1]` |
 | FR-005.13 | `EXTERNAL` declares without allocating; exactly one non-`EXTERNAL` declaration of each shared structure must exist in the program, and its absence is diagnosed. | `[SQLPM/C §9 p.9-3]` |
 | FR-005.14 | `SQLCA_EYE_CATCHER` is `CA` and `SQLCA_LEN` is 430; the program initialises the eye-catcher. | `[SQLPM/C §9 p.9-12]` |
+| FR-005.14a | The `SQLCA` layout is implementation-private and covers all 29 documented item-code contents; direct field access is unsupported and the accessor procedures are the only supported path. | `[SQLPM/C §5 pp.5-11..5-12]` `[DIV-041]` |
 | FR-005.15 | The `SQLCA` can carry up to seven error or warning codes from one statement, in any combination. | `[SQLPM/C §9 p.9-12]` |
 | FR-005.16 | `SQLSA_EYE_CATCHER` is `SA`; `SQLSA_LEN` is 838 for versions 300–325 and 1790 for version 330 or later. | `[SQLPM/C §9 p.9-14]` |
 | FR-005.17 | `SQLSA` is populated after `INSERT`, `UPDATE`, `DELETE`, `SELECT … INTO`, and cursor `OPEN`/`CLOSE`/`FETCH` where the cursor carries a `SELECT`. | `[SQLPM/C §9 p.9-13]` |
 | FR-005.18 | `SQLSA` is populated after `PREPARE`, `DESCRIBE`, and `DESCRIBE INPUT`. | `[SQLPM/C §9 p.9-13]` |
 | FR-005.19 | `SQLSA` is undefined after DSL, DDL, DCL, and transaction control statements, and the implementation must not make it accidentally meaningful. | `[SQLPM/C §9 p.9-13]` |
 | FR-005.20 | Every statement resets `SQLSA`, including every `FETCH`. | `[SQLPM/C §9 pp.9-13, 9-14]` |
-| FR-005.21 | `SQLSA` field names and structure match the manual's field list, including the `dml`, `stats[]`, and `prepare` substructures. | `[SQLPM/C §9 pp.9-17..9-18]` |
+| FR-005.21 | `SQLSA` field names and layout match the published declarations for both version families, with **packed** field alignment — the only alignment under which the published 838 and 1790 sizes are reachable. | `[SQLPM/C §9 pp.9-15..9-16]` |
+| FR-005.21a | `dml` and `prepare` are arms of a **union**, not coexisting substructures; only the arm matching the last statement's class is meaningful. | `[SQLPM/C §9 pp.9-15..9-16]` |
+| FR-005.21b | `table_name` is 24 bytes. In version 300–325 the five `stats[]` counters are 32-bit and `waits`/`escalations` are 16-bit; in version 330+ the counters are 64-bit and `waits`/`escalations` are 32-bit. | `[SQLPM/C §9 pp.9-15..9-16]` |
+| FR-005.21c | The VSBB flags exist only in version 330+; in version 300–325 that 4-byte slot is `sqlsa_reserved`. | `[SQLPM/C §9 pp.9-15..9-16]` |
 | FR-005.22 | `num_tables` is capped at 16 and `stats[]` carries exactly that many valid entries. | `[SQLPM/C §9 p.9-17]` |
 | FR-005.23 | `vsbb_write` and `vsbb_flushed` use `-1` for true and `0` for false. | `[SQLPM/C §9 p.9-17]` |
+| FR-005.23a | `SQLCAGETINFOLIST` honours all 29 item codes with their documented sizes, and returns error codes 8510–8517 for the documented failure conditions. | `[SQLPM/C §5 pp.5-11..5-12]` |
+| FR-005.23b | Item code 22 reports errors as positive and warnings as negative — the inverse of `sqlcode` — and this inversion is reproduced as published. | `[SQLPM/C §5 p.5-12]` |
 | FR-005.24 | `sql_statement_type` uses the published values 1–8 with the `_SQL_STATEMENT_*` names. | `[SQLPM/C §9 p.9-18]` |
 | FR-005.25 | `SQLSA` fields with no MariaDB analogue return a documented sentinel, never zero. | `[DIV-011]`, Principle III |
 | FR-005.26 | `SQLSA VERSION CURRENT` generates both version 300 and 330 layouts and emits the `SQLGETSYSTEMVERSION` call the option implies. | `[SQLPM/C §9 p.9-2]` |
@@ -171,28 +177,33 @@ present so a debugging build can surface it.
 
 | # | Question | Blocks | Resolution |
 |---|----------|--------|------------|
-| Q1 | `SQLCA` field layout. The manual never gives one — only the `SQLCAGETINFOLIST` item codes describe its content. How is a 430-byte layout reconstructed for programs that index it directly? | FR-005.14, NFR-005.1 | unresolved — the largest risk in this feature |
-| Q2 | `SQLSA` field offsets. Field names and total sizes are published; offsets are not. Do 838 and 1790 constrain the layout uniquely? | FR-005.21, NFR-005.1 | unresolved — attempt derivation, then validate against real NonStop output if obtainable |
-| Q3 | Which sentinel values for the unmappable `SQLSA` fields? | FR-005.25 | unresolved — must be a value no genuine measurement can take |
-| Q4 | `sqlcode` values for the §2 conversion warnings (shared with 002 Q1). | FR-005.1 | unresolved |
+| Q1 | `SQLCA` field layout — the manual never gives one. | FR-005.14, NFR-005.1 | **RESOLVED** — `DIV-041`. No layout exists anywhere in the manual, so no conforming program can depend on one. Define a private 430-byte layout covering the 29 documented item codes; the accessor procedures are the only supported path |
+| Q2 | `SQLSA` field offsets. | FR-005.21, NFR-005.1 | **RESOLVED** — §9 pp.9-15..9-16 publish both layouts, and they validate exactly to 838 and 1790 under packed alignment. Offsets fully determined |
+| Q3 | Which sentinel values for the unmappable `SQLSA` fields? | FR-005.25 | unresolved — and now known to need **per-width** values, since the counters are 32-bit pre-330 and 64-bit in v330+ |
+| Q4 | `sqlcode` values for the §2 conversion warnings (shared with 002 Q1). | FR-005.1 | unresolved — `DIV-042`. The only one of the three original conflicts this manual cannot settle |
 | Q5 | Does `WHENEVER` apply to dynamic SQL statements? §9 names DML, DCL, and DDL only. | FR-005.7 | unresolved — decide with 007 |
 | Q6 | What does the SQL message file become — a bundled message catalogue, or MariaDB's own messages? Affects `SQLCADISPLAY` output text. | FR-005.28, .32 | unresolved |
+| Q7 | Item code 22 reports errors positive and warnings negative, inverting `sqlcode`. Is that inversion faithful to reproduce, or a manual defect? | FR-005.30 | unresolved — reproduce as published pending evidence, and pin it with a test in both directions |
 
-Q1 and Q2 together mean the structures cannot be implemented byte-exactly from
-the manual alone. Principle VI demands the published sizes be hit exactly, which
-is achievable; it cannot demand offsets the manual never states. The honest
-resolution is: hit the sizes, publish the chosen offsets as this
-implementation's contract, and register a divergence acknowledging that a program
-which hard-codes an offset derived from real NonStop output may break.
+Q1 and Q2 are closed, and the earlier assessment that "the structures cannot be
+implemented byte-exactly from the manual alone" was wrong for SQLSA: the layouts
+are published in §9's worked examples, which I had not read when the spec was
+first written. The arithmetic confirms them independently.
+
+SQLCA genuinely has no published layout, but that turns out to be liberating
+rather than blocking — the absence means no conforming program can be indexing
+it, so choosing a layout breaks nothing that was ever specified. Holding the
+total at 430 preserves what programs do rely on: `SQLCA_LEN` allocation and
+`EXTERNAL` sharing.
 
 ## 7. Constitution check
 
 | Principle | Compliant? | Note |
 |-----------|-----------|------|
-| I manual is the contract | partial | Q1, Q2 are genuine documentation gaps in the source manual, not omissions in this spec |
+| I manual is the contract | partial | Q1 and Q2 resolved from §9 pp.9-15..9-16 and §5 pp.5-11..5-12. Q3–Q7 remain open; Q4 needs an external document |
 | II source compatibility | yes | All directive forms and identifier names preserved |
 | III no silent semantic change | yes | FR-005.25 forbids zero-filling; FR-005.19 forbids making an undefined structure accidentally meaningful |
 | IV manual-derived tests first | yes | Eight scenarios; NFR-005.2 guards the precedence order specifically |
 | V layered / frozen ABI | yes | Structures are runtime-owned; the preprocessor emits declarations and `esqlc_*` accessors |
-| VI byte-exact structures | partial | Sizes yes, offsets not derivable — see Q1/Q2 and the divergence they require |
-| VII divergence registered | partial | `DIV-011` proposed. Q1/Q2 require a new entry before implementation |
+| VI byte-exact structures | yes | `SQLSA` fully determined and size-validated for both version families. `SQLCA` size exact at 430; its layout is private by `DIV-041`, which breaks nothing the manual specified |
+| VII divergence registered | yes | `DIV-011` (updated with layout findings), `DIV-041` accepted, `DIV-042` proposed for the warning codes |

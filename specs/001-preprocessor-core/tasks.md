@@ -72,7 +72,7 @@ position with the right message.
 | ID | Task | Reqs | Deps |
 |----|------|------|------|
 | T090 | Mark §3 and the 001-owned §6 rows in `docs/traceability.md` as `tested` | — | Phase D |
-| T091 | Resolve Q2: record the frozen `#pragma SQL` option set; add `DIV-003` if `CPG` contradicts it | — | Phase C |
+| T091 | Resolve Q2: record the frozen `#pragma SQL` option set; register a new divergence (allocating its ID at that point) if `CPG` contradicts it | — | Phase C |
 | T092 | Document the position-class heuristic's accepts/rejects in `docs/reference/directives-and-statements.md` | FR-001.11..14 | T033, T023 |
 | T093 | Prove the Phase 1 gate path end to end: `INSERT … VALUES (:hv)` against the stub, then note the handoff to 003 | NFR-001.1 | T040 |
 
