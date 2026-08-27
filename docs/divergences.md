@@ -243,12 +243,21 @@ loss, fixed-point to integer fraction loss, and (as an error) input value too
 large for a column, which *is* numbered, 8300. It never states the `sqlcode`
 values for the three warnings.
 
-**Here:** pending resolution. Two routes, in order of preference:
+**Here:** pending resolution. Three routes, in order of preference:
 
 1. Source the real values from the SQL/MP Reference Manual or the SQL message
    file, and withdraw this divergence.
-2. Failing that, assign values from a documented reserved block and publish them
+2. Derive the values from the standard SQLSTATE warning subclasses and publish the
+   mapping, additionally exposing `SQLSTATE` as an opt-in host variable.
+   ISO/IEC 9075-5:1999 confirms class `01` is the warning class and sorts it into
+   category W, the same category `WHENEVER SQLWARNING` tests — but its Table 10
+   lists only the subclasses Part 5 adds, so the specific values need Part 2
+   (SQL/Foundation). See [ansi-conformance.md](reference/ansi-conformance.md).
+3. Failing both, assign values from a documented reserved block and publish them
    as this implementation's contract.
+
+Route 2 is preferred over route 3 because standard-derived values are defensible
+and stable where arbitrary ones are neither.
 
 **Rationale:** warning codes are what customer error handlers branch on. Route 1
 preserves existing handlers. Route 2 is acceptable only because the alternative —

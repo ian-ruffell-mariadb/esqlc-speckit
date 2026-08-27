@@ -39,6 +39,7 @@ See Principle III in [the constitution](.specify/memory/constitution.md).
 .claude/commands/                 /speckit.* slash commands
 docs/source-manual.md             Provenance, citation convention, re-extraction
 docs/reference/                   Distilled normative reference sheets
+docs/reference/ansi-conformance.md  Gap analysis vs ISO/IEC 9075-5:1999
 docs/traceability.md              Manual section -> spec coverage matrix
 docs/divergences.md              Register of accepted behavioural divergences
 specs/NNN-*/spec.md              Feature specs (what + why, testable)

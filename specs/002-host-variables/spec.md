@@ -162,6 +162,8 @@ unresolved question below.
 | Q2 | Does `SETSCALE`'s effect persist beyond the statement containing it? | FR-002.18 | unresolved |
 | Q3 | Is C `fixed` a real HP C type this project should implement, or a NonStop compiler extension to be shimmed? | FR-002.19 | unresolved — `[EXTERNAL — CPG]` |
 | Q4 | How are `KANJI`, `KSC5601`, and the ISO 8859 sets mapped onto MariaDB character sets, and what happens for `UNKNOWN`? | FR-002.4, .8 | unresolved — likely a new divergence |
+| Q5 | Are a C storage class (`auto`/`extern`/`static`), a class modifier (`const`/`volatile`), and an initialiser permitted on a host variable definition inside a declare section? | FR-002.1, .2 | unresolved — ISO/IEC 9075-5:1999 §16.4 permits all three; the HP manual is silent. Customer code plausibly uses `static`, so silence is not safe to read as prohibition |
+| Q6 | Are comma-separated multiple declarators permitted in one host variable definition? | FR-002.1 | unresolved — the standard permits them throughout §16.4; the HP manual's examples only ever show one per statement |
 
 Q1 is the important one. Warning codes are what customer error handlers branch
 on, so inventing them silently would breach Principle III; inventing them
