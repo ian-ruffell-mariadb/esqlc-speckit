@@ -276,6 +276,59 @@ warning values need remapping; handlers testing only `sqlcode > 0 && != 100`
 
 ---
 
+## DIV-051 — Post-DELETE cursor position is pinned to one of two permitted outcomes
+
+**Status:** accepted · **Feature:** 004 · **Citation:** `[SQLPM/C §4 p.4-16]`
+
+**NonStop:** the cursor position table says a positioned `DELETE` leaves the
+cursor "between rows", then elaborates that it is positioned *either* between
+rows *or* before the next row and after the preceding row. The two phrasings are
+not obviously distinct, and the manual commits to neither.
+
+**Here:** one interpretation is chosen, documented, and applied consistently:
+the cursor sits immediately before the row that followed the deleted one, so the
+next `FETCH` returns that row.
+
+**Rationale:** an implementation cannot be ambiguous. Choosing the reading under
+which the next `FETCH` returns the following row preserves the natural
+delete-while-scanning loop, which is the dominant use of positioned `DELETE`.
+
+**Detection:** a program that deletes the current row and then expects the next
+`FETCH` to re-return the *same* ordinal position would differ — but no such
+program can have been portable, since the manual permits both readings.
+
+**Migration:** none expected. Programs relying on the other reading were already
+relying on unspecified behaviour.
+
+---
+
+## DIV-050 — INVOKE indicator-name collision is diagnosed, not reproduced
+
+**Status:** accepted · **Feature:** 006 · **Citation:** `[SQLPM/C §2 p.2-22]`
+
+**NonStop:** for a column name of 30 or 31 characters under the default `_I`
+indicator suffix, the suffix is truncated away, so the generated indicator
+variable ends up with **the same name as its host variable**. The manual
+documents this and advises using `PREFIX` or `NULL STRUCTURE` to avoid it.
+
+**Here:** the collision is a hard error (`ESQLC-6007`) naming the column and
+recommending `PREFIX` or `NULL STRUCTURE`.
+
+**Rationale:** the NonStop behaviour is a defect the manual documents rather than
+a feature. Two distinct declarations sharing a name cannot both be emitted, so
+faithfully reproducing it is not even possible in generated C — the outcomes are
+a compile error with a confusing message, or one declaration silently winning.
+An explicit diagnostic naming the fix is strictly better than both.
+
+**Detection:** preprocessing fails where NonStop's C compiler would have failed
+later and less clearly. No runtime difference — affected programs could not have
+worked correctly on NonStop either.
+
+**Migration:** add a `PREFIX` or `NULL STRUCTURE` clause to the `INVOKE`, which
+is what the manual advises regardless of platform.
+
+---
+
 ## Template
 
 ```

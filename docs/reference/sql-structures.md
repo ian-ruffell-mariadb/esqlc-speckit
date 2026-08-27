@@ -5,6 +5,28 @@ Normative sources: `[SQLPM/C §9 pp.9-1..9-18]`, `[SQLPM/C §10 pp.10-3..10-11]`
 these, shares them `EXTERNAL`, and allocates extra copies using the length
 constants.
 
+## Version matrix `[§App. D p.D-2]`
+
+| Structure | Version | Size | Eye-catcher | Added at this version |
+|---|---|---|---|---|
+| SQLCA | 1, 2, ≥300 | 430 | `CA` | nothing — unchanged across all versions |
+| SQLSA | 1 | 838 | `SA` | — |
+| SQLSA | 2 | 838 | `SA` | nothing |
+| SQLSA | 300–325 | 838 | `SA` | `output_collations_len` |
+| SQLSA | ≥330 | 1790 | `SA` | the three CPU-time fields, `vsbb_write`, `vsbb_flushed` |
+| SQLDA | 1 | variable | `DA` | — |
+| SQLDA | 2 | variable | `D1` | `precision`, `null_info`, `ind_ptr` |
+| SQLDA | ≥300 | variable | `D1` | `cprl_ptr`, user-defined collation buffer |
+
+This independently confirms two things asserted elsewhere in this sheet: the VSBB
+flags arrive only at version 330, and the SQLCA never changes shape.
+
+> **Source contradiction.** Table D-1 maps SQLDA version 1 to eye-catcher `DA`
+> and version 2 to `D1`. The field description in Table D-2 states the reverse.
+> Example D-1 — which is the *version 2* example — defines the eye-catcher as
+> `D1`, corroborating Table D-1, so this project follows Table D-1. Recorded as
+> a defect in the source document rather than silently resolved.
+
 ## Version selection
 
 ```

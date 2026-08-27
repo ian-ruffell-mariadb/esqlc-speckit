@@ -45,10 +45,19 @@ requested.
 | ID | Requirement | Citation |
 |----|-------------|----------|
 | FR-006.1 | `INVOKE` is accepted in declaration position and generates a structure describing the named table or view. | `[SQLPM/C §2 p.2-18]`, `[SQLPM/C §3 p.3-2]` |
-| FR-006.2 | Generated field names derive from column names; generated types follow the 002 mapping. | `[SQLPM/C §2 pp.2-19..2-21]` |
+| FR-006.2 | Generated field names are the column names, lowercased; generated types follow the 002 mapping. | `[SQLPM/C §2 pp.2-19..2-22]` |
+| FR-006.2a | The generated structure tag is the object name with `_type` appended. | `[SQLPM/C §2 pp.2-21..2-22]` |
+| FR-006.2b | `CHARACTER SET` is emitted inline in the field declaration, before the identifier, for columns carrying a character set. | `[SQLPM/C §2 p.2-22]` |
+| FR-006.2c | `NCHAR(l)` generates a character array and `NCHAR VARYING(l)` generates the two-field VARCHAR structure, both in the system default multibyte character set. | `[SQLPM/C §2 pp.2-20..2-22]` |
+| FR-006.2d | A class MAP DEFINE is accepted for the invoked object name, but not for the structure tag. | `[SQLPM/C §2 p.2-19]` `[DIV-002]` |
+| FR-006.2e | `INVOKE` requires read access to the invoked object at preprocess time. | `[SQLPM/C §2 p.2-19]` |
 | FR-006.3 | Character fields receive the extra null-terminator placeholder byte unless the SQL pragma specifies `CHAR_AS_ARRAY`. | `[SQLPM/C §2 p.2-7]` |
 | FR-006.4 | A `VARCHAR` column generates a nested structure whose group name derives from the column name, with subordinate `len` (`short`) and `val` (character array), `val` carrying the extra byte when `CHAR_AS_STRING` is in effect. | `[SQLPM/C §2 p.2-9]` |
-| FR-006.5 | Indicator variables can be generated alongside the structure and are usable with the generated fields. | `[SQLPM/C §2 p.2-22]` |
+| FR-006.5 | A two-byte `short` indicator variable is generated automatically for every column that permits nulls, and precedes its host variable in the generated structure. | `[SQLPM/C §2 p.2-22]` |
+| FR-006.5a | An indicator's name is the column name plus an optional prefix and a suffix, governed by the `PREFIX`, `SUFFIX`, and `NULL STRUCTURE` clauses. | `[SQLPM/C §2 p.2-22]` |
+| FR-006.5b | With neither prefix nor suffix specified, the suffix `_I` is appended. | `[SQLPM/C §2 p.2-22]` |
+| FR-006.5c | For a column name of 30 or 31 characters under the default suffix, SQL/MP truncates the `_I`, producing an indicator name identical to the host variable name. This implementation must **diagnose** that collision rather than reproduce it. | `[SQLPM/C §2 p.2-22]` `[DIV-050]` |
+| FR-006.5d | Generated output carries a comment naming the invoked object and the timestamp of the definition used. | `[SQLPM/C §2 pp.2-21..2-22]` |
 | FR-006.6 | A referenced table or view that does not exist, or is unreadable, is a preprocess-time error naming the object. | Principle III |
 | FR-006.7 | The schema used for generation is recorded in the listing output so that a compiled program's assumed schema is auditable. | derived from `[SQLPM/C §6 p.6-25]` |
 | FR-006.8 | Individual generated fields are referenceable as `:structname.field`; the structure name itself is referenceable only for the `VARCHAR` case. | `[SQLPM/C §2 pp.2-9, 2-10]` |
@@ -99,6 +108,8 @@ requested.
 | `ESQLC-6004` | Column name cannot be transformed into a valid, unique C identifier | error | `[§2 p.2-19]` |
 | `ESQLC-6005` | Cached schema is stale relative to a reachable database | warn | Principle III |
 | `ESQLC-6006` | `INVOKE` outside declaration position | error | `[§3 p.3-2]` |
+| `ESQLC-6007` | Indicator name would collide with its host variable (30/31-char column under default suffix) | error | `[§2 p.2-22]` `[DIV-050]` |
+| `ESQLC-6008` | No read access to the invoked object at preprocess time | error | `[§2 p.2-19]` |
 
 `ESQLC-6005` is a warning rather than an error so that offline builds remain
 possible, but it must be loud: a stale schema produces structures that mismatch
@@ -109,11 +120,12 @@ prevent.
 
 | # | Question | Blocks | Resolution |
 |---|----------|--------|------------|
-| Q1 | Exact column-name-to-field-name transformation rule, including case handling and characters invalid in C identifiers. | FR-006.2, `ESQLC-6004` | pending — read §2 pp.2-19..2-21 during `/speckit.plan` |
-| Q2 | Exact `INVOKE` syntax, including how indicator generation is requested. | FR-006.1, FR-006.5 | pending — same reading |
-| Q3 | How are indicator variables named and associated with fields? | FR-006.5 | pending — §2 p.2-22 |
+| Q1 | Exact column-name-to-field-name transformation rule. | FR-006.2, `ESQLC-6004` | **RESOLVED** — field names are the column names, lowercased. Structure tag is `<object>_type`. See FR-006.2a..2c |
+| Q2 | Exact `INVOKE` syntax, including how indicator generation is requested. | FR-006.1, FR-006.5 | **PARTIALLY RESOLVED** — the `PREFIX`, `SUFFIX`, and `NULL STRUCTURE` clauses are confirmed, and a class MAP DEFINE is accepted for the object name. The full production is still deferred to `SQLRM` `[EXTERNAL]` |
+| Q3 | How are indicator variables named and associated with fields? | FR-006.5 | **RESOLVED** — see FR-006.5a..5d. Includes the 30/31-character truncation defect |
 | Q4 | Schema cache format, invalidation, and whether it belongs in version control. | NFR-006.2, `ESQLC-6005` | unresolved — a build-reproducibility decision, not a manual question |
 | Q5 | Does `INVOKE` generate anything for a protection view differently from a table? | FR-006.1 | unresolved |
+| Q6 | `INVOKE` accepts a class MAP DEFINE for the object name but **not** for the structure tag. Does the tag then have to be given explicitly whenever a DEFINE is used? | FR-006.1, `DIV-002` | unresolved — `[SQLPM/C §2 p.2-19]` states the restriction without stating the consequence |
 
 Q1–Q3 are transcription tasks against pages this spec already identifies, not
 research. They are listed as questions because guessing a naming rule produces

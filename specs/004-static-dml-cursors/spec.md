@@ -64,12 +64,14 @@ correct-looking code.
 | FR-004.13 | `FETCH` advances to the next row and copies values into host variables. | `[SQLPM/C §4 p.4-20]` |
 | FR-004.14 | `FETCH` past the last row sets `sqlcode` to 100 and leaves host variables unmodified. | `[SQLPM/C §9 p.9-6]`, `[SQLPM/C §4 p.4-16]` |
 | FR-004.15 | `CLOSE` terminates the cursor and frees its result table. | `[SQLPM/C §4 p.4-24]`, `[SQLPM/C §10 p.10-2]` |
-| FR-004.16 | Cursor position after each operation and outcome follows the manual's position table exactly. | `[SQLPM/C §4 p.4-16 Table 4-2]` |
+| FR-004.16 | Cursor position follows the manual's position table where it constrains behaviour: `OPEN` positions before the first row; `FETCH` positions at the retrieved row (or leaves the current position); `CLOSE` leaves no position and releases the result table; `SELECT` fixes the row order only when `ORDER BY` is given, and the order is otherwise undefined. | `[SQLPM/C §4 p.4-16 Table 4-2]` |
+| FR-004.16a | After a positioned `DELETE` the cursor is between rows — the manual permits either "between rows" or "before the next row and after the preceding row", so this implementation picks one, documents it, and stays consistent. | `[SQLPM/C §4 p.4-16]` `[DIV-051]` |
+| FR-004.16b | Row order for a cursor `SELECT` without `ORDER BY` is explicitly undefined and must not be relied on by any conformance test. | `[SQLPM/C §4 p.4-16]` |
 | FR-004.17 | `UPDATE … WHERE CURRENT OF` updates the row the cursor is positioned on. | `[SQLPM/C §4 p.4-22]` |
 | FR-004.18 | `DELETE … WHERE CURRENT OF` deletes the row the cursor is positioned on, and the resulting position follows the position table. | `[SQLPM/C §4 pp.4-16, 4-23]` |
 | FR-004.19 | Operating on a cursor out of order — `FETCH` before `OPEN`, `OPEN` twice, positioned update with no current row — is an error, not undefined behaviour. | `[SQLPM/C §4 p.4-15]` |
 | FR-004.20 | Cursor stability semantics are documented and implemented, or the divergence is registered. | `[SQLPM/C §4 p.4-17]` |
-| NFR-004.1 | Every row of the manual's cursor position table has a dedicated test. | Principle IV |
+| NFR-004.1 | Every row of the manual's cursor position table has a dedicated test, and every position the table leaves unspecified (Q6, Q7) has a test pinning **this implementation's** documented choice, marked as such so it is never mistaken for manual-derived behaviour. | Principle IV |
 | NFR-004.2 | Every statement form in §4 has a test against the App. A sample schema. | Principle IV |
 
 ## 4. Acceptance scenarios
@@ -131,11 +133,14 @@ SQL/MP returns something other than 100 for a not-found-like condition. Reuse th
 
 | # | Question | Blocks | Resolution |
 |---|----------|--------|------------|
-| Q1 | Exact contents of the manual's cursor position table (Table 4-2) — every row must be transcribed into the test matrix before implementation. | FR-004.16 | pending — read §4 p.4-16 during `/speckit.plan` |
+| Q1 | Exact contents of the manual's cursor position table (Table 4-2). | FR-004.16 | **RESOLVED, and the answer changes the requirement.** Transcribed below. The table has five rows and is materially *vaguer* than this spec assumed — it constrains far less than FR-004.16 originally claimed |
 | Q2 | What does SQL/MP do when a single-row `SELECT` matches many rows? | FR-004.3 | unresolved, `[EXTERNAL — SQLRM]` |
 | Q3 | Cursor stability: which SQL/MP access modes exist, and which MariaDB isolation level is the closest honest match for each? | FR-004.20 | unresolved — likely a divergence per mode |
 | Q4 | Does `CLOSE` outside a transaction differ from `CLOSE` inside one, given `COMMIT WORK` frees cursors? | FR-004.15, FR-003.8 | unresolved |
 | Q5 | Are cursors declared in declaration position scoped to the compilation unit or the function? | FR-004.11, `ESQLC-4006` | unresolved |
+| Q6 | Where does the cursor sit after a `FETCH` past the last row? Table 4-2 does not say, and FR-004.14 currently asserts an answer the manual does not give. | FR-004.14 | unresolved — `[EXTERNAL — SQLRM]`. Must become a documented choice or a divergence |
+| Q7 | Where does the cursor sit after a positioned `UPDATE`? Table 4-2 omits `UPDATE` entirely, yet AS-004.3 asserts the row stays current and the next `FETCH` advances. | FR-004.17 | unresolved — `[EXTERNAL — SQLRM]`. Same treatment as Q6 |
+| Q8 | Cursor PAID rules are finer than assumed: read access is tested on the objects in the cursor's `SELECT` at `OPEN`, write access only on `DELETE`, and a cursor without `FOR UPDATE` may still locate rows to delete. Does `IN EXCLUSIVE MODE` need modelling? | FR-004.20, 008 FR-008.14 | unresolved — `[SQLPM/C §4 p.4-16]` |
 
 Q1 is not really a question — it is a task. It sits here because the position
 table is the single highest-risk item in this feature and must not be

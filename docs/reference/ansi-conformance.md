@@ -146,9 +146,17 @@ Standard `<C character variable>`: `char`, `unsigned char`, `unsigned short`.
 The standard writes `CHARACTER SET [IS] <charset>`; SQL/MP omits `IS`. SQL/MP
 accepts a subset, which is harmless.
 
-Standard types with **no SQL/MP counterpart**: `NCHAR`, `NCHAR VARYING`, `CLOB`,
-`NCLOB`, `BLOB`, `BIT`, user-defined types, all four locator forms
-(CLOB/BLOB/array/UDT), `REF`, and the whole `SQL TYPE IS …` syntax.
+Standard types with **no SQL/MP counterpart**: `CLOB`, `NCLOB`, `BLOB`, `BIT`,
+user-defined types, all four locator forms (CLOB/BLOB/array/UDT), `REF`, and the
+whole `SQL TYPE IS …` syntax.
+
+> **Correction (2026-08-27).** An earlier revision of this sheet also listed
+> `NCHAR` and `NCHAR VARYING` as absent from SQL/MP. That was wrong. SQL/MP
+> supports both — spelled `NATIONAL CHARACTER` and `NATIONAL CHARACTER VARYING`
+> in the §2 type tables, and `NCHAR` / `NCHAR VARYING` in the §2 `INVOKE`
+> examples. `INVOKE` maps `NCHAR(l)` to a character array and
+> `NCHAR VARYING(l)` to the two-field VARCHAR structure, both in the system
+> default multibyte character set. `[SQLPM/C §2 pp.2-3, 2-20..2-22]`
 
 The standard also permits a `<C storage class>` (`auto`/`extern`/`static`) and a
 `<C class modifier>` (`const`/`volatile`) on host variable definitions, and
