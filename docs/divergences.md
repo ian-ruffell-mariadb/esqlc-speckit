@@ -38,23 +38,40 @@ continue to work on LP64 but waste 4 bytes and must not be assumed 32-bit.
 
 ## DIV-002 — TACL DEFINE name resolution
 
-**Status:** proposed · **Feature:** 008 · **Citation:** `[SQLPM/C §6 p.6-6, §7 p.7-2, App. C]`
+**Status:** accepted · **Feature:** 003, 006, 008 · **Citation:** `[SQLPM/C §6 p.6-6, §7 p.7-2, §2 p.2-19, App. C]`
 
 **NonStop:** `=name` in an embedded statement is resolved at run time through a
 TACL DEFINE to a Guardian file name, so the same object can be repointed without
-recompiling.
+recompiling. Two classes matter: class `CATALOG` for a catalog, class `MAP` for
+an object (table, view, index, partition). Propagation into a new process is
+governed by `DEFMODE` — `ON` propagates the parent's current DEFINE set from its
+process file segment, `OFF` propagates only `=_DEFAULTS`. `INVOKE` additionally
+accepts a class MAP DEFINE for the invoked object name, but **not** for the
+structure tag `[§2 p.2-19]`.
 
-**Here:** to be decided — a configuration-file mapping, an environment-variable
-convention, or refusal. The manual's own examples use `=defines` pervasively
-(`FROM =shipments`), so refusal has a high blast radius.
+**Here:** resolved by a configuration-file mapping layer with two sections
+mirroring the two DEFINE classes — one for catalogs, one for objects — under the
+precedence chain of FR-003.19 (environment, then file, then compile-time
+defaults). An unmapped name is a diagnostic (`ESQLC-3007`), never a silent
+pass-through to MariaDB.
 
-**Rationale:** pending.
+**Rationale:** the value of a DEFINE is late binding — repointing an object
+without recompiling — and a configuration file preserves exactly that, while
+requiring no change to customer source. Refusal was the alternative and has an
+unacceptable blast radius: the manual's own examples use `=name` pervasively
+(`FROM =shipments`).
 
-**Detection:** pending. **Migration:** pending.
+**Detection:** names resolve from configuration rather than from the process's
+inherited DEFINE set. A program relying on a DEFINE created dynamically at run
+time by a Guardian procedure has no equivalent and gets `ESQLC-3007`.
 
-> Blocks feature 008 reaching `Ready`. Also blocks any conformance test
-> transcribed from a manual example, because those examples use `=name` freely —
-> feature 001's fixtures must either resolve this or avoid `=name`.
+**Migration:** translate the deployment's DEFINE set into the configuration
+file's mapping sections. Static DEFINE sets translate mechanically;
+programmatically created DEFINEs need redesign.
+
+> Open sub-question (003 Q6): whether `DEFMODE`'s inherit-all vs
+> inherit-only-defaults distinction needs an analogue. Programs may depend on
+> being able to disable mapping wholesale.
 
 ---
 
@@ -77,6 +94,35 @@ timeouts instead of TMF lock waits, and the absence of cross-resource atomicity.
 **Migration:** programs relying on multi-node or multi-resource TMF atomicity
 require redesign, not a recompile. Feature 003's spec must enumerate which
 observable behaviours change.
+
+---
+
+## DIV-012 — PROGID privilege elevation is refused
+
+**Status:** accepted · **Feature:** 003 · **Citation:** `[SQLPM/C §7 pp.7-1..7-2]`
+
+**NonStop:** authorisation for a database object is decided by the process access
+ID (PAID) plus the group list of the creator access ID (CAID). PAID depends on
+the program file's `PROGID` attribute: with it off, PAID equals the invoking
+user's ID; with it on, PAID equals the **program owner's** ID, letting one user
+temporarily gain a controlled subset of another's privileges.
+
+**Here:** PAID maps to the MariaDB user on the process's single connection.
+`PROGID` elevation has no analogue and is not emulated. A program that depends on
+it is diagnosed (`ESQLC-3008`).
+
+**Rationale:** the available emulation would be to let configuration name a
+second, more-privileged MariaDB user that the runtime silently switches to. That
+moves a real privilege boundary into a config file and is a
+privilege-escalation bug waiting to be written. Refusing is honest; approximating
+a security boundary is not a compatibility decision.
+
+**Detection:** the diagnostic. There is no silent-failure path — the program does
+not run rather than running with the wrong identity.
+
+**Migration:** grant the required privileges to the invoking user directly, or run
+the program as a MariaDB user that already holds them. The elevation itself has to
+be re-expressed as MariaDB grants; there is no mechanical translation.
 
 ---
 

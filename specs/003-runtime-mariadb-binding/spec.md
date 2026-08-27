@@ -66,6 +66,15 @@ atomicity will, and must be told rather than allowed to discover it.
 | FR-003.13 | `sqlcode` is set after every statement: `0` success, `100` not found, negative for errors, positive non-`100` for warnings. | `[SQLPM/C §9 p.9-6]` |
 | FR-003.14 | Input value too large for a column yields `sqlcode` 8300 with file-system detail 1031 retrievable. | `[SQLPM/C §2 p.2-5]` |
 | FR-003.15 | The stub runtime used by 001's tests implements the same ABI and records calls without a database. | NFR-001.2 |
+| FR-003.16 | Exactly one connection exists per process, opened lazily on first statement execution and closed at process exit. | `[SQLPM/C §7 pp.7-1..7-3]` |
+| FR-003.17 | Single-threaded execution is the supported model. Entry to any `esqlc_*` entry point from a second thread returns a hard error and performs no database work. | Constitution III |
+| FR-003.18 | Connection, transaction, cursor, and diagnostic state are all scoped to the process, matching the single-connection model. | `[SQLPM/C §7 p.7-1]` |
+| FR-003.19 | Context is resolved from three sources, highest precedence first: environment variables prefixed `ESQLC_`, then a configuration file, then defaults baked in at preprocess time. | Principle II, `[SQLPM/C §7 p.7-2]` |
+| FR-003.20 | The precedence order is fixed, documented, and independently observable — a program can report which source supplied each resolved value. | FR-003.5 |
+| FR-003.21 | Credentials are handled through MariaDB's own option-file and credential mechanisms. The runtime never accepts credentials in source, in a statement, or in a URL parameter. | Constitution III |
+| FR-003.22 | The configuration file carries object-name mapping in two sections mirroring the DEFINE classes: one for catalogs, one for objects. | `[SQLPM/C §7 p.7-2]` `[DIV-002]` |
+| FR-003.23 | An unmapped Guardian name or DEFINE reference is a diagnostic naming the unresolved name, never a silent pass-through to MariaDB. | Constitution III `[DIV-002]` |
+| FR-003.24 | PAID maps to the connection's MariaDB user. `PROGID` privilege elevation has no analogue and a program depending on it is diagnosed, not approximated. | `[SQLPM/C §7 pp.7-1..7-2]` `[DIV-012]` |
 | NFR-003.1 | The runtime is testable in isolation, driven directly by handwritten C against the ABI. | Principle V |
 | NFR-003.2 | No entry point interpolates host-variable text into SQL under any circumstance. | Principle III |
 | NFR-003.3 | Connection and statement state is explicitly scoped; the scoping rule (per-process, per-thread) is documented, not emergent. | — |
@@ -113,6 +122,10 @@ atomicity will, and must be told rather than allowed to discover it.
 | `ESQLC-3003` | Nested `BEGIN WORK` | error | `[EXTERNAL — SQLRM]` |
 | `ESQLC-3004` | Statement body contains a construct the translator cannot parameterise | error | Principle III |
 | `ESQLC-3005` | Host variable count or type mismatch against the statement's parameters | error | Principle III |
+| `ESQLC-3006` | `esqlc_*` entry from a second thread | error | Constitution III |
+| `ESQLC-3007` | Guardian name or DEFINE reference with no mapping | error | `[DIV-002]` |
+| `ESQLC-3008` | Program requires `PROGID` privilege elevation | error | `[DIV-012]` |
+| `ESQLC-3009` | Credentials supplied by an unsupported route (in source, statement, or URL) | error | Constitution III |
 
 ## 6. Open questions
 
@@ -121,20 +134,37 @@ atomicity will, and must be told rather than allowed to discover it.
 | Q1 | What is SQL/MP's behaviour for a DML statement outside `BEGIN WORK` on an audited table — implicit transaction, or error? | FR-003.7 | unresolved, `[EXTERNAL — SQLRM]`. Determines whether autocommit is faithful or a divergence |
 | Q2 | Is nested `BEGIN WORK` an error in SQL/MP, or does TMF support subtransactions? | FR-003.6, `ESQLC-3003` | unresolved, `[EXTERNAL — SQLRM]` |
 | Q3 | What does §4's implicit open lifecycle actually guarantee, given error 8204 (lost open) exists? Can the runtime reopen transparently? | FR-003.9 | unresolved — interacts with 008's 8204 policy |
-| Q4 | Connection scope: per-process, or per-thread? Customer programs are largely single-threaded Pathway servers, which argues per-process. | NFR-003.3 | unresolved |
-| Q5 | Which configuration mechanism? This is also the natural home for `DIV-002` TACL DEFINE mapping. | FR-003.4, .5 | unresolved — decide jointly with 008 |
+| Q4 | Connection scope: per-process, or per-thread? | NFR-003.3 | **RESOLVED** — one connection per process, opened lazily on first statement. A NonStop program is a process, and Pathway servers are processes. Single-threaded is the supported model; concurrent ABI entry is diagnosed, never silently tolerated. See FR-003.16..18 |
+| Q5 | Which configuration mechanism? | FR-003.4, .5 | **RESOLVED** — environment, then config file, then compile-time defaults, highest first. Environment-first mirrors how DEFINEs and `DEFMODE` already arrive from the process environment. See FR-003.19..23 |
+| Q6 | Does `DEFMODE` have a useful analogue — should a child process inherit the parent's DEFINE mappings, and can mapping be disabled wholesale? | FR-003.22 | unresolved — `[SQLPM/C §7 p.7-2]`. `DEFMODE OFF` propagating only `=_DEFAULTS` is a real behaviour programs may rely on |
 
 Q1 and Q2 both need `SQLRM`. Until they are answered, transaction semantics are
 guesses, and guesses here corrupt data rather than merely annoying users.
+
+### Why there is nothing to map
+
+SQL/MP has no connect statement because it has no connection. The model has two
+halves and neither has a MariaDB counterpart `[SQLPM/C §7 pp.7-1..7-2]`:
+
+- **What to access** is resolved by name — fully-qualified Guardian names, or
+  TACL DEFINEs in two classes: class `CATALOG` for a catalog, class `MAP` for an
+  object. Propagation is governed by `DEFMODE`.
+- **Whether you may** is resolved by process identity — PAID plus group list,
+  with PAID depending on the `PROGID` attribute.
+
+MariaDB resolves both halves through one connection carrying host and
+credentials. The overlap is empty, so this feature invents a context mechanism
+rather than mapping one — under the hard constraint that customer source gains
+not one line (Principle II).
 
 ## 7. Constitution check
 
 | Principle | Compliant? | Note |
 |-----------|-----------|------|
-| I manual is the contract | partial | Transaction semantics are `[EXTERNAL]`; Q1, Q2 open |
+| I manual is the contract | partial | Context and scope now grounded in §7 pp.7-1..7-2. Transaction semantics remain `[EXTERNAL]`; Q1, Q2, Q6 open |
 | II source compatibility | yes | FR-003.4 forbids adding a connect statement to customer source |
 | III no silent semantic change | yes | NFR-003.2; `ESQLC-3004` refuses rather than approximating |
 | IV manual-derived tests first | yes | Five scenarios, one requiring a second connection to verify isolation |
 | V layered / frozen ABI | yes | This feature *is* the ABI; FR-003.1..3 and AS-003.5 enforce it |
 | VI byte-exact structures | n/a | No SQL structures here |
-| VII divergence registered | partial | `DIV-010` proposed. Q1/Q3/Q5 will likely add more |
+| VII divergence registered | partial | `DIV-010` proposed; `DIV-002` and `DIV-012` accepted. Q1/Q3/Q6 may add more |
