@@ -1,0 +1,11 @@
+#pragma SQL
+EXEC SQL BEGIN DECLARE SECTION;
+  short a;
+  char  b[11];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL INSERT INTO t (x, y, z)
+           -- a comment mentioning :notahostvar
+           VALUES (:a, "literal :alsonot", :b);
+  return 0;
+}

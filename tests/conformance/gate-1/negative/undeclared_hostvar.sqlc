@@ -1,0 +1,5 @@
+#pragma SQL
+int main(void) {
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:nope);
+  return 0;
+}

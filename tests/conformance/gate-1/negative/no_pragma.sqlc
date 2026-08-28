@@ -1,0 +1,4 @@
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  return 0;
+}

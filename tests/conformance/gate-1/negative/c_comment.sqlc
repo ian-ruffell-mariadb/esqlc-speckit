@@ -1,0 +1,5 @@
+#pragma SQL
+int main(void) {
+  EXEC SQL BEGIN /* not allowed */ WORK;
+  return 0;
+}
