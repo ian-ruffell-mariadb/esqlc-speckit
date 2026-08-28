@@ -22,12 +22,14 @@ int main(void)
   memcpy(part_desc, "HEX NUT, 8MM      ", 18);
   part_desc[18] = '\0';
 
-  #line 20 "tests/conformance/gate-1/insert.sqlc"
+  
+#line 20 "tests/conformance/gate-1/insert.sqlc"
 do { esqlc_txn_begin(); sqlcode = esqlc_sqlcode(); } while (0);
 #line 20 "tests/conformance/gate-1/insert.sqlc"
 
 
-  #line 22 "tests/conformance/gate-1/insert.sqlc"
+  
+#line 22 "tests/conformance/gate-1/insert.sqlc"
 do {
   esqlc_hostvar_t __esqlc_hv_1[2] = {
     { &part_num, 0, ESQLC_T_INT, 2u, 2u, 0, 1, ESQLC_DIR_IN, 0 },
@@ -44,7 +46,8 @@ do {
        so reporting it after the rollback reports the rollback's status, not
        the failure's. The manual gives this advice at §9 p.9-13. */
     long failed_with = sqlcode;
-    #line 30 "tests/conformance/gate-1/insert.sqlc"
+    
+#line 30 "tests/conformance/gate-1/insert.sqlc"
 do { esqlc_txn_rollback(); sqlcode = esqlc_sqlcode(); } while (0);
 #line 30 "tests/conformance/gate-1/insert.sqlc"
 
@@ -52,7 +55,8 @@ do { esqlc_txn_rollback(); sqlcode = esqlc_sqlcode(); } while (0);
     return 1;
   }
 
-  #line 35 "tests/conformance/gate-1/insert.sqlc"
+  
+#line 35 "tests/conformance/gate-1/insert.sqlc"
 do { esqlc_txn_commit(); sqlcode = esqlc_sqlcode(); } while (0);
 #line 35 "tests/conformance/gate-1/insert.sqlc"
 

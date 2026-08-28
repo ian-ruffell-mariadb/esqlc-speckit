@@ -15,6 +15,64 @@ scope keeps its `ESQLC-1012` handler entry naming the owning feature.
 guard for the `INSERT INTO` landmark risk, which is the sharpest hazard in this
 slice — see T220 and the plan's risk table.
 
+---
+
+## Implementation status — 2026-08-28
+
+**Gate 2 is green end to end.** Branch `gate-2-implementation`.
+`ctest` is 7/7 with a server and 6/6 under `-DESQLC_NO_MARIADB=ON`; Tier 2 is
+13/13; spec assertions 38/38; diagnostic registry clean at 20 codes.
+
+**Principle IV was honoured this time.** Every Phase B test was written and run
+*before* any Phase C work, and the pre-implementation failures were the right
+ones — `ESQLC-1012: 'SELECT' is not implemented in this slice; owned by feature
+004` across all five Tier 2 fixtures, with the negatives failing on missing
+codes rather than passing vacuously. That is the difference from Gate 1, where
+code came first and the golden files were snapshotted after the fact.
+
+### Mutation checks — all four caught
+
+| Check | Injected defect | Result |
+|---|---|---|
+| T240 | null-terminate the fetch buffer | `select_into` failed with `\|00` where `\|AA` was required — the terminator byte overwritten. Only that test failed |
+| T241 | write to output buffers on the no-row path | `not_found_untouched` failed, only that test |
+| T242 | swap two output descriptors | `select_into` failed — **broader than predicted**, taking two other cases with it, but fired correctly |
+| T243 | let the `INTO` landmark leak into `INSERT` | the Gate 1 direction guard failed, naming both `part_num` and `part_desc` |
+
+### Defects found by building
+
+1. **`#line` emitted mid-line was invalid C.** When `EXEC SQL` follows other code
+   on the same source line — `{ long s = sqlcode; EXEC SQL ROLLBACK WORK; }` —
+   the emitter wrote the directive mid-line, where only whitespace may precede
+   `#`. Gate 1's fixtures all began statements at column 1, so it never showed.
+   Fixed by tracking line position and prefixing a newline when needed.
+2. **Two fixtures checked `sqlcode` after `COMMIT WORK`**, which resets it like
+   every statement does. `not_found` failed outright; `null_indicator` passed by
+   accident, since it expected 0 and the commit supplied one. Both now capture
+   immediately after the `SELECT`. This is the third time this trap has bitten,
+   always in test code — §9 p.9-13 warns about it explicitly.
+3. **Gate 1's `unimplemented.sqlc` silently changed meaning.** It used `SELECT`
+   as its example of an unimplemented statement; once `SELECT` was implemented
+   it began testing `ESQLC-1014` instead of `FR-001.15`. Repointed at `UPDATE`.
+   T207 existed because this was anticipated.
+
+### Found and recorded, not fixed
+
+- **004 Q9** — the dispatch table's `DECLARE CURSOR` entry is dead code. Real
+  syntax is `DECLARE <name> CURSOR FOR …`, with the name between the two words,
+  so the multi-word matcher never fires and a real cursor declaration yields
+  `ESQLC-1009` rather than `ESQLC-1012`. Cursor syntax belongs to feature 004,
+  so this was noted rather than folded in, and T207's fixture uses `FETCH`.
+
+### Deviations
+
+- The golden `.expected.c` files were re-baselined after the `#line` fix. The
+  diff was inspected first and confirmed to be exactly twelve directives moving
+  to line-start with no semantic change. The spec assertions — which are the
+  specification tests — passed throughout, which is what made re-baselining safe.
+
+---
+
 ## Phase A — fixtures and harness
 
 | ID | Task | Reqs | Deps |

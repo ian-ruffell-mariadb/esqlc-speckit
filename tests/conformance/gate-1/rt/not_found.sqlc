@@ -1,0 +1,35 @@
+/* T202/T209 — no row matches. sqlcode must be exactly 100 and every host
+   variable must be byte-identical to its poisoned contents (FR-004.2). */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+  char  part_desc[19];
+  short weight;
+  short weight_ind;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  int i, intact = 1;
+  memset(part_desc, 0xAA, sizeof part_desc);
+  weight = -32000; weight_ind = -32000;
+  part_num = 9999;                                  /* no such row */
+
+  EXEC SQL BEGIN WORK;
+  EXEC SQL SELECT part_desc, weight
+             INTO :part_desc, :weight INDICATOR :weight_ind
+             FROM parts
+            WHERE part_num = :part_num;
+  /* Capture before COMMIT WORK, which resets sqlcode like every statement
+     does (§9 p.9-13). Checking after the commit tests the commit. */
+  { long sel = sqlcode;
+    EXEC SQL COMMIT WORK;
+    sqlcode = sel; }
+
+  for (i = 0; i < 19; ++i)
+    if ((unsigned char)part_desc[i] != 0xAA) intact = 0;
+  if (weight != -32000 || weight_ind != -32000) intact = 0;
+  printf("sqlcode=%ld intact=%d\n", sqlcode, intact);
+  return (sqlcode == 100 && intact) ? 0 : 1;
+}

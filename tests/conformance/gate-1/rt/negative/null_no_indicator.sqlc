@@ -1,0 +1,20 @@
+/* T204 — a null column with no indicator supplied. Must yield a negative
+   sqlcode (8423) and NOT be remapped to 100, nor silently zero-filled
+   (FR-005.2, ESQLC-4009). */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19]; short weight;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  memset(part_desc, 0xAA, sizeof part_desc);
+  weight = -32000;
+  part_num = 4103;                                  /* weight IS NULL */
+  EXEC SQL BEGIN WORK;
+  EXEC SQL SELECT weight INTO :weight FROM parts WHERE part_num = :part_num;
+  { long s = sqlcode; EXEC SQL ROLLBACK WORK;
+    printf("sqlcode=%ld weight=%d\n", s, weight);
+    return (s < 0 && s != 100 && weight == -32000) ? 0 : 1; }
+}

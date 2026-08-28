@@ -58,6 +58,78 @@ std::string placeholderise(const Construct &k) {
     return out;
 }
 
+// A reference, classified. `ind` indexes the reference that serves as this
+// one's indicator, or -1.
+struct Classified {
+    std::size_t ref;          // index into k.hostvars
+    bool        is_out;
+    int         ind = -1;     // index into k.hostvars, or -1
+};
+
+// Is the gap between two references an indicator association rather than a
+// separate list item? `:v :i` and `:v INDICATOR :i` associate; `:a, :b` does
+// not, because a comma separates list items (FR-002.15).
+bool associates(const std::string &body, std::size_t from, std::size_t to) {
+    std::string gap = body.substr(from, to - from);
+    if (gap.find(',') != std::string::npos) return false;
+    std::string up;
+    for (char ch : gap) up += (char)std::toupper((unsigned char)ch);
+    // strip whitespace
+    std::string bare;
+    for (char ch : up) if (!std::isspace((unsigned char)ch)) bare += ch;
+    return bare.empty() || bare == "INDICATOR";
+}
+
+// Classify every reference by landmark. Applied ONLY by the SELECT handler:
+// `INSERT INTO parts` also contains the INTO landmark, and letting this run
+// there would silently turn Gate 1's inputs into outputs.
+std::vector<Classified> classify(const Construct &k) {
+    std::vector<Classified> out;
+    const std::size_t lo = k.into_off;
+    const std::size_t hi = (k.from_off == Construct::npos) ? k.body.size() : k.from_off;
+
+    std::vector<bool> consumed(k.hostvars.size(), false);
+    for (std::size_t i = 0; i < k.hostvars.size(); ++i) {
+        if (consumed[i]) continue;
+        const auto &r = k.hostvars[i];
+        bool is_out = (lo != Construct::npos && r.begin >= lo && r.begin < hi);
+        Classified c{i, is_out, -1};
+        if (is_out && i + 1 < k.hostvars.size()) {
+            const auto &n = k.hostvars[i + 1];
+            if (n.begin < hi && associates(k.body, r.end, n.begin)) {
+                c.ind = (int)(i + 1);
+                consumed[i + 1] = true;
+            }
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
+// Build the statement actually sent: the INTO clause is a binding instruction,
+// not SQL, so it is removed; inputs become placeholders at their recorded
+// spans. Still splicing at known offsets — nothing parses the body.
+std::string select_sql(const Construct &k, const std::vector<Classified> &cls) {
+    const std::size_t lo = k.into_off;
+    const std::size_t hi = (k.from_off == Construct::npos) ? k.body.size() : k.from_off;
+    std::vector<std::pair<std::size_t, std::size_t>> subs;   // spans to replace with ?
+    for (const auto &c : cls)
+        if (!c.is_out) subs.push_back({k.hostvars[c.ref].begin, k.hostvars[c.ref].end});
+
+    std::string out;
+    std::size_t i = 0;
+    while (i < k.body.size()) {
+        if (lo != Construct::npos && i == lo) { i = hi; continue; }   // drop INTO clause
+        bool replaced = false;
+        for (const auto &s : subs) {
+            if (i == s.first) { out += '?'; i = s.second; replaced = true; break; }
+        }
+        if (replaced) continue;
+        out += k.body[i++];
+    }
+    return out;
+}
+
 const char *type_macro(unsigned t) {
     switch (t) {
         case 1: return "ESQLC_T_CHAR_FIXED";
@@ -88,11 +160,27 @@ std::string emit(const std::string &file, const ScanResult &sr,
 
     bool in_declare = false;
     int  hv_seq = 0;
+    bool at_line_start = true;
+
+    // A #line directive must begin a line — only whitespace may precede the #.
+    // An EXEC SQL sitting after other C on the same source line would otherwise
+    // emit `... ; #line 17 "..."`, which is a syntax error. Gate 1's fixtures
+    // all started their statements at column 1, so this never showed until
+    // Gate 2 wrote `{ long s = sqlcode; EXEC SQL ROLLBACK WORK; }`.
+    auto line_directive = [&](int line) {
+        if (!at_line_start) o << "\n";
+        o << "#line " << line << " \"" << file << "\"\n";
+        at_line_start = true;
+    };
+    auto track = [&](const std::string &t) {
+        if (!t.empty()) at_line_start = (t.back() == '\n');
+    };
 
     for (const auto &ch : sr.chunks) {
         if (!ch.is_sql) {
-            o << "#line " << ch.pos.line << " \"" << file << "\"\n";
+            line_directive(ch.pos.line);
             o << ch.c_text;
+            track(ch.c_text);
             if (in_declare) {
                 // The declarations themselves are valid C: emit verbatim above,
                 // and additionally harvest descriptors from them.
@@ -125,7 +213,7 @@ std::string emit(const std::string &file, const ScanResult &sr,
         if (k.keyword == "BEGIN DECLARE SECTION") { in_declare = true;  continue; }
         if (k.keyword == "END DECLARE SECTION")   { in_declare = false; continue; }
 
-        o << "#line " << k.pos.line << " \"" << file << "\"\n";
+        line_directive(k.pos.line);
 
         if (k.keyword == "BEGIN WORK" || k.keyword == "COMMIT WORK" ||
             k.keyword == "ROLLBACK WORK") {
@@ -133,6 +221,59 @@ std::string emit(const std::string &file, const ScanResult &sr,
                            : k.keyword == "COMMIT WORK" ? "esqlc_txn_commit"
                                                         : "esqlc_txn_rollback";
             o << "do { " << fn << "(); sqlcode = esqlc_sqlcode(); } while (0);\n";
+            continue;
+        }
+
+        if (k.keyword == "SELECT") {
+            // A SELECT with no INTO is a cursor specification, which this
+            // slice does not implement. Refuse by name rather than guess.
+            if (k.into_off == Construct::npos) {
+                d.error("ESQLC-1012", k.pos,
+                        "SELECT without an INTO clause is a cursor specification; "
+                        "not implemented in this slice, owned by feature 004");
+                continue;
+            }
+            std::vector<Classified> cls = classify(k);
+            std::string sql = collapse_ws(select_sql(k, cls));
+            std::string arr = "__esqlc_hv_" + std::to_string(++hv_seq);
+
+            o << "do {\n";
+            o << "  esqlc_hostvar_t " << arr << "[" << cls.size() << "] = {\n";
+            bool bad = false;
+            for (const auto &c : cls) {
+                const auto &ref = k.hostvars[c.ref];
+                const HostVar *hv = find(vars, ref.name);
+                if (!hv) {
+                    d.error("ESQLC-1014", k.pos,
+                            "host variable ':" + ref.name +
+                            "' is not declared in a declare section");
+                    bad = true;
+                    continue;
+                }
+                std::string ind = "0";
+                if (c.ind >= 0) {
+                    const auto &iref = k.hostvars[(std::size_t)c.ind];
+                    const HostVar *ihv = find(vars, iref.name);
+                    if (!ihv) {
+                        d.error("ESQLC-1014", k.pos,
+                                "indicator variable ':" + iref.name +
+                                "' is not declared in a declare section");
+                        bad = true;
+                        continue;
+                    }
+                    ind = "&" + ihv->name;
+                }
+                o << "    { &" << hv->name << ", " << ind << ", "
+                  << type_macro(hv->type) << ", " << hv->width << "u, "
+                  << hv->capacity << "u, 0, " << (hv->is_signed ? 1 : 0) << ", "
+                  << (c.is_out ? "ESQLC_DIR_OUT" : "ESQLC_DIR_IN") << ", 0 },\n";
+            }
+            o << "  };\n";
+            if (bad) { o << "} while (0);\n"; continue; }
+            o << "  esqlc_stmt_exec(" << c_string_literal(sql) << ", "
+              << sql.size() << ", " << arr << ", " << cls.size() << ");\n";
+            o << "  sqlcode = esqlc_sqlcode();\n";
+            o << "} while (0);\n";
             continue;
         }
 

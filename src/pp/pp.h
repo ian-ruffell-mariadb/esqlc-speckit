@@ -37,6 +37,14 @@ struct Construct {
     Pos pos;                          // position of the EXEC token
     PosClass where = PosClass::Decl;
     std::vector<HostVarRef> hostvars;
+
+    // Landmarks, recorded in the same pass as the spans above so that an INTO
+    // or FROM inside a "string" cannot be mistaken for one (Gate 2, T250).
+    // Offsets into `body`, or npos. The body is still never parsed — these are
+    // two more positions the lexer notes in passing, nothing more.
+    static constexpr std::size_t npos = static_cast<std::size_t>(-1);
+    std::size_t into_off = npos;
+    std::size_t from_off = npos;
 };
 
 // A chunk of the source: either verbatim C, or an embedded construct.

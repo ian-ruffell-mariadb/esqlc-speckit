@@ -1,5 +1,10 @@
+/* Gate 1 fixture, repointed by Gate 2. It used SELECT as its example of an
+   unimplemented statement; SELECT is now implemented, so it moved to UPDATE,
+   which feature 004 still owns. Without this the fixture would silently stop
+   testing FR-001.15 and start testing ESQLC-1014 instead. */
 #pragma SQL
+long sqlcode;
 int main(void) {
-  EXEC SQL SELECT part_num INTO :x FROM parts;
+  EXEC SQL UPDATE parts SET weight = 1 WHERE part_num = 1;
   return 0;
 }

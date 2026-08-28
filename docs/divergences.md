@@ -324,8 +324,8 @@ warning values need remapping; handlers testing only `sqlcode > 0 && != 100`
 
 ## DIV-052 — MariaDB strips trailing blanks from CHAR on retrieval
 
-**Status:** proposed · **Feature:** 002, 004 · **Citation:** `[SQLPM/C §2 p.2-8]`
-**Found:** Gate 1 implementation, 2026-08-28
+**Status:** accepted · **Feature:** 002, 004 · **Citation:** `[SQLPM/C §2 p.2-8]`
+**Found:** Gate 1 implementation · **Resolved:** Gate 2, option 1, 2026-08-28
 
 **NonStop:** fixed-length character columns are *always* blank-padded in the
 database, and the manual makes program behaviour depend on it — an under-padded
@@ -347,8 +347,11 @@ Option 2 stays the documented fallback if the session mode proves insufficient,
 for instance where a deployment's option file overrides `sql_mode` after connect.
 Gate 2 criterion 3 is the check that would catch that.
 
-Implemented by [Gate 2](../specs/gate-2.md); status moves to `accepted` when
-that slice lands.
+**Implemented** in `src/rt/context.c` at connect, appending to `@@sql_mode` via
+`CONCAT` rather than assigning, so other modes survive. Its detector is Gate 2's
+`select_into` assertion, which compares the full 18-byte value including its six
+trailing blanks — if the mode were ever lost, that comparison fails rather than
+silently returning a short string.
 
 **Options considered:**
 

@@ -1,0 +1,22 @@
+/* T203 — a null column with an indicator: indicator must be exactly -1 and the
+   value variable must be left alone (FR-002.16). */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19]; short weight; short weight_ind;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  memset(part_desc, 0xAA, sizeof part_desc);
+  weight = -32000; weight_ind = -32000;
+  part_num = 4103;                                  /* weight IS NULL */
+  EXEC SQL BEGIN WORK;
+  EXEC SQL SELECT part_desc, weight
+             INTO :part_desc, :weight INDICATOR :weight_ind
+             FROM parts
+            WHERE part_num = :part_num;
+  EXEC SQL COMMIT WORK;
+  printf("sqlcode=%ld ind=%d weight=%d\n", sqlcode, weight_ind, weight);
+  return (sqlcode == 0 && weight_ind == -1 && weight == -32000) ? 0 : 1;
+}
