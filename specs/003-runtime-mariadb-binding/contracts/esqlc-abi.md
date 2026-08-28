@@ -163,9 +163,20 @@ no `strlen`, no truncation at a null byte, no padding (FR-002.30, FR-002.31). A
 single `length` field is precisely how a `strlen`-based binding sneaks in and
 silently diverges from SQL/MP on the commonest column type.
 
-Fields not yet exercised: `ind_addr` and `ESQLC_DIR_OUT` (Gate 2), `scale`
-(pending 002 Q2/Q3), `charset` beyond `0` (pending 002 Q4; Gate 1 binds `UNKNOWN`
-as the connection default per slice decision SD-1).
+**Live as of Gate 2** (no signature change — behaviour only):
+
+- `direction` — an `ESQLC_DIR_OUT` entry anywhere in the array makes
+  `esqlc_stmt_exec` execute as a singleton select, fetching at most one row.
+  This is why the field was defined in Gate 1 despite being unused then: it
+  meant retrieval needed no new entry point.
+- `ind_addr` — non-`NULL` means the program supplied an indicator, and the
+  runtime writes `-1` for null or `0` for not-null. `NULL` means it did not, and
+  a null column value is then SQL error 8423 (`ESQLC-4009`) rather than a
+  silently zeroed variable.
+
+Fields still not exercised: `scale` (pending 002 Q2/Q3), and `charset` beyond `0`
+(pending 002 Q4; both gates bind `UNKNOWN` as the connection default per slice
+decision SD-1).
 
 ## Open against this contract
 

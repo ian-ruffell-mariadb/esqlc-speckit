@@ -1,6 +1,7 @@
 # Gate 2: retrieval
 
-**Status:** Ready to plan · **Specs:** 001, 002, 003, 004, 005 (scoped)
+**Status:** Planned · **Plan:** [gate-2-plan.md](gate-2-plan.md)
+**Specs:** 001, 002, 003, 004, 005 (scoped)
 **Depends on:** Gate 1 (merged, green, CI-enforced) · **Blocks:** cursors, then Phase 3
 
 Gate 1 proved data can leave a C program and reach MariaDB faithfully. Gate 2
