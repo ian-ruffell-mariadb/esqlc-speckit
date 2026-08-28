@@ -6,6 +6,88 @@ Rules in force: tests before implementation (Principle IV); every Phase C task
 names the Phase B task it makes pass; `[P]` only where tasks touch disjoint files
 with no dependency between them; every task lists requirement IDs.
 
+---
+
+## Implementation status — 2026-08-28
+
+**Gate 1 is green end to end.** Branch `gate-1-implementation`.
+
+| Area | State |
+|---|---|
+| Phase A harness and fixtures | done |
+| Tier 1 suite (golden, negative, isolation, contract) | **4/4 automated, passing** |
+| Preprocessor Phase C | done for slice scope |
+| Runtime Phase C | done for slice scope |
+| Tier 2 live-database checks | **8/8 automated, passing; skips cleanly with no server** |
+| Phase D diagnostics | 6/6 firing at correct code, line, column |
+| Phase E | partial |
+
+`ctest` is 6/6 with a server and 5/6 + 1 skip without one. Under
+`-DESQLC_NO_MARIADB=ON` it is 5/5 with the runtime target and `tier2_live`
+absent entirely — which is the shape CI's first job runs in.
+
+**CI (T084–T086) is in place**: `.github/workflows/ci.yml`, two jobs.
+`tier1-no-mariadb` runs in a `debian:bookworm-slim` container — not the hosted
+runner image, which ships a MySQL client and would have made the job prove
+nothing — and asserts up front that no MariaDB tool, header or library is
+present before building. `tier2-live` runs against a MariaDB service container
+and asserts Tier 2 did **not** skip, since a silent skip would turn a broken
+database into a green build.
+
+### Process debts — both now paid (2026-08-28)
+
+1. ~~**Principle IV was not honoured for most of Phase C.**~~ **Fixed.** The
+   golden `.expected.c` files were snapshots, asserting what the code does
+   rather than what the spec requires. They are retained as regression guards,
+   and `tests/harness/spec_assertions.py` now carries **26 specification
+   assertions, each naming the requirement it derives from** — width/capacity
+   separation, placeholder-to-descriptor correspondence, no host-variable
+   reference surviving into statement text, no value appearing in statement
+   text, pragma consumption, verbatim C, `#line` presence, and the span-capture
+   rules for strings and comments.
+
+   Proven load-bearing by mutation: injecting `width = capacity` — the mistake
+   a `strlen`- or `sizeof`-based implementation makes — fails exactly the two
+   FR-002.30 assertions, by name. Writing them also caught a defect in the
+   FR-003.1 check itself, which had been matching identifiers inside comments
+   and string literals.
+
+2. ~~**Tier 2 is not wired into `ctest`.**~~ **Fixed.**
+   `tests/harness/run_tier2.sh` automates all eight live checks and is a ctest
+   target. It reads the same `ESQLC_*` variables the runtime resolves, so the
+   harness cannot test a different database than the code sees, and it exits 77
+   (`SKIP_RETURN_CODE`) when no server is reachable, preserving NFR-001.2.
+
+### Remaining deviations
+
+3. **C11, not the C99 the plan named.** Principle VI mandates `_Static_assert`
+   on the ABI structure and C99 has no such facility, so the plan's language
+   choice was incompatible with the constitution. C11 resolves it.
+4. **Component consolidation.** The plan named `context.cc`, `pragma.cc` and
+   `stmt.cc`; position tracking and pragma detection live in `scan.cc`, and the
+   statement handlers in `emit.cc`. Six pp files rather than nine.
+5. **`ESQLC-1014` was invented during implementation** for "host variable
+   referenced but not declared". No spec defines it. It needs registering in
+   001 or 002 before it can be considered legitimate.
+
+### Defects found and fixed while building
+
+- `#line` after a generated block carried the construct's own line rather than
+  the following line, so every line number after an embedded statement was
+  wrong. Caught by the line-fidelity check, not by inspection.
+- The golden runner compared embedded source paths, making it sensitive to the
+  cwd the tool was invoked from — it passed by hand and failed under `ctest`.
+- The gate fixture reported `sqlcode` *after* `ROLLBACK WORK`, which resets it.
+  The fixture now saves it first, per §9 p.9-13.
+
+### Found and registered, not fixed
+
+- **`DIV-052`** — MariaDB strips trailing blanks from `CHAR` on retrieval unless
+  `PAD_CHAR_TO_FULL_LENGTH` is set. Storage is faithful; retrieval is not.
+  Gate 1 has no `SELECT` so it does not hit this, but feature 004 will.
+
+---
+
 Phase D covers the six diagnostics the slice exercises — the subset of 001/002/003's
 diagnostic tables reachable from the gate fixtures. The remaining diagnostics in
 those specs are out of slice scope and are served by `ESQLC-1012` (T092), which

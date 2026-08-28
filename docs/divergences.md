@@ -322,6 +322,45 @@ warning values need remapping; handlers testing only `sqlcode > 0 && != 100`
 
 ---
 
+## DIV-052 — MariaDB strips trailing blanks from CHAR on retrieval
+
+**Status:** proposed · **Feature:** 002, 004 · **Citation:** `[SQLPM/C §2 p.2-8]`
+**Found:** Gate 1 implementation, 2026-08-28
+
+**NonStop:** fixed-length character columns are *always* blank-padded in the
+database, and the manual makes program behaviour depend on it — an under-padded
+array stores its null byte and "comparison operations fail".
+
+**Here:** storage is faithful — Gate 1 proved exactly `width` bytes reach the
+column verbatim, embedded null bytes included. **Retrieval is not.** MariaDB
+strips trailing spaces from a `CHAR(n)` on `SELECT` unless the session sets
+`PAD_CHAR_TO_FULL_LENGTH`. The same row reads back as 12 bytes or 18 depending
+only on `sql_mode`.
+
+**Rationale:** pending — this is newly found and the decision belongs to Gate 2,
+which owns retrieval. Three candidates:
+
+1. The runtime sets `PAD_CHAR_TO_FULL_LENGTH` on its own session at connect,
+   making retrieval faithful without touching customer source. Cheapest, but it
+   changes a session-wide mode a program might otherwise rely on.
+2. The runtime pads to the column width itself on output binding, leaving
+   `sql_mode` alone. More surgical, needs column metadata on every fetch.
+3. Accept the divergence and document it. Rejected as-is: §2 p.2-8 ties
+   comparison behaviour to padding, so a silently short value is exactly the
+   class of failure Constitution III forbids.
+
+**Detection:** `length()` of a retrieved fixed-length column is shorter than the
+declared column width whenever the value has trailing blanks.
+
+**Migration:** none for insert-side code. Retrieval-side comparisons are the
+risk, and cannot be assessed until Gate 2 chooses among the options above.
+
+> Gate 1 does **not** hit this — the slice has no `SELECT`. Registered now
+> because it is visible now, and would otherwise be discovered as a bug during
+> feature 004.
+
+---
+
 ## DIV-051 — Post-DELETE cursor position is pinned to one of two permitted outcomes
 
 **Status:** accepted · **Feature:** 004 · **Citation:** `[SQLPM/C §4 p.4-16]`

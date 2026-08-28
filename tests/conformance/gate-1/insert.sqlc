@@ -1,0 +1,37 @@
+#pragma SQL
+
+#include <stdio.h>
+#include <string.h>
+
+long sqlcode;            /* program-declared, per slice decision SD-2 */
+
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+  char  part_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+int main(void)
+{
+  part_num = 4102;
+  /* 18 characters exactly - blank padded by the program, per FR-002.31 */
+  memcpy(part_desc, "HEX NUT, 8MM      ", 18);
+  part_desc[18] = '\0';
+
+  EXEC SQL BEGIN WORK;
+
+  EXEC SQL INSERT INTO parts (part_num, part_desc)
+           VALUES (:part_num, :part_desc);
+
+  if (sqlcode != 0) {
+    /* Save it first: every statement resets sqlcode, ROLLBACK WORK included,
+       so reporting it after the rollback reports the rollback's status, not
+       the failure's. The manual gives this advice at §9 p.9-13. */
+    long failed_with = sqlcode;
+    EXEC SQL ROLLBACK WORK;
+    fprintf(stderr, "insert failed, sqlcode %ld\n", failed_with);
+    return 1;
+  }
+
+  EXEC SQL COMMIT WORK;
+  return 0;
+}

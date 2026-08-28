@@ -1,0 +1,3 @@
+#pragma SQL
+EXEC SQL INSERT INTO parts (part_num) VALUES (1);
+int main(void) { return 0; }

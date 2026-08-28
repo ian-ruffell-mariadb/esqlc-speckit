@@ -1,0 +1,17 @@
+/* T047 — FR-002.31. The program under-fills the array, so its null byte must
+   reach the column. A strlen-based bind passes every other test and fails
+   this one. */
+#pragma SQL
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  part_num = 7;
+  memcpy(part_desc, "ABC\0DEFGHIJKLMNOPQ", 18);   /* NUL at index 3 */
+  EXEC SQL BEGIN WORK;
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  EXEC SQL COMMIT WORK;
+  return sqlcode == 0 ? 0 : 1;
+}

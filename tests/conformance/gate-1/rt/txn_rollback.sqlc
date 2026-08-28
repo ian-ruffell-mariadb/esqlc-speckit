@@ -1,0 +1,15 @@
+/* T045 — ROLLBACK WORK must leave no trace. The only check that proves the
+   transaction is a transaction rather than autocommit in disguise. */
+#pragma SQL
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  part_num = 555; memcpy(part_desc, "ROLLED BACK ROW   ", 18);
+  EXEC SQL BEGIN WORK;
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  EXEC SQL ROLLBACK WORK;
+  return 0;
+}

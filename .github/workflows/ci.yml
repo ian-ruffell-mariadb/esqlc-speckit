@@ -1,0 +1,145 @@
+name: ci
+
+# T084 — Tier 1 must run where MariaDB is genuinely absent, so a client
+#        dependency creeping into the preprocessor breaks the build (NFR-001.2).
+# T085 — abi_isolation in CI, so a MariaDB type reaching the ABI header fails
+#        the build (FR-003.2, Constitution V).
+# T086 — contract_sync in CI, so header/contract drift fails the build (FR-003.3).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------
+  # The point of this job is what is NOT installed.
+  #
+  # It runs in a slim container rather than on the hosted runner image,
+  # because those images ship a MySQL client. If this ran there, the build
+  # would happily link MariaDB and NFR-001.2 would be enforced by nothing.
+  # ---------------------------------------------------------------------
+  tier1-no-mariadb:
+    name: Tier 1 (no MariaDB present)
+    runs-on: ubuntu-latest
+    container: debian:bookworm-slim
+    steps:
+      - name: Install the toolchain, and nothing else
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            build-essential cmake python3 git ca-certificates
+          rm -rf /var/lib/apt/lists/*
+
+      - uses: actions/checkout@v4
+
+      - name: Assert MariaDB really is absent
+        # Guards against the base image gaining a client later and silently
+        # turning this job into an ordinary build.
+        run: |
+          for tool in mariadb_config mysql_config mariadb mysql; do
+            if command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::$tool is present; this job must run without any"
+              echo "MariaDB tooling or it proves nothing about NFR-001.2."
+              exit 1
+            fi
+          done
+          if ls /usr/include/mysql/mysql.h /usr/include/mariadb/mysql.h \
+                >/dev/null 2>&1; then
+            echo "::error::MariaDB headers are present; see above"
+            exit 1
+          fi
+          echo "confirmed: no MariaDB tooling, libraries, or headers"
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Assert the runtime target was skipped
+        # CMake skips libesqlc when mariadb_config is missing. If it were built
+        # here, something is finding MariaDB after all.
+        run: |
+          if [ -e build/libesqlc.a ]; then
+            echo "::error::the runtime built without MariaDB — impossible, investigate"
+            exit 1
+          fi
+          echo "confirmed: runtime target correctly skipped"
+
+      - name: Build the preprocessor
+        run: cmake --build build --target esqlcpp -j
+
+      - name: Assert the preprocessor links no MariaDB
+        run: |
+          if ldd build/esqlcpp 2>/dev/null | grep -iE 'mariadb|mysql'; then
+            echo "::error::esqlcpp links a MariaDB library (NFR-001.2)"
+            exit 1
+          fi
+          echo "confirmed: esqlcpp links no MariaDB library"
+
+      - name: Tier 1 suite
+        # tier2_live is absent here because the runtime target was skipped, so
+        # this exercises exactly the no-database path.
+        run: ctest --test-dir build --output-on-failure
+
+  # ---------------------------------------------------------------------
+  # Tier 2 against a real server. The failure mode to guard against is a
+  # green build produced by tier2 silently skipping.
+  # ---------------------------------------------------------------------
+  tier2-live:
+    name: Tier 2 (live MariaDB)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "yes"
+          MARIADB_DATABASE: esqlc_gate1
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      ESQLC_HOST: 127.0.0.1
+      ESQLC_PORT: "3306"
+      ESQLC_USER: root
+      ESQLC_DATABASE: esqlc_gate1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain and MariaDB client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake python3 libmariadb-dev mariadb-client
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build -j
+
+      - name: Assert the runtime target was built
+        run: test -e build/libesqlc.a || { echo "::error::runtime not built"; exit 1; }
+
+      - name: Full suite
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Assert Tier 2 actually ran
+        # run_tier2.sh exits 77 (SKIP) when no server is reachable. A skip here
+        # would turn a broken database into a green build, which is exactly the
+        # kind of silent pass this project refuses elsewhere.
+        run: |
+          ./tests/harness/run_tier2.sh build/esqlcpp build/libesqlc.a | tee /tmp/t2.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" = "77" ]; then
+            echo "::error::Tier 2 skipped in the live job; the service is not reachable"
+            exit 1
+          fi
+          [ "$rc" = "0" ] || exit "$rc"
+          grep -q "tier2: 8 passed, 0 failed" /tmp/t2.log || {
+            echo "::error::expected all 8 Tier 2 checks to pass"; exit 1; }

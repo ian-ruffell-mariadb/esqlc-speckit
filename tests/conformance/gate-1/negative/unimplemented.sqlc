@@ -1,0 +1,5 @@
+#pragma SQL
+int main(void) {
+  EXEC SQL SELECT part_num INTO :x FROM parts;
+  return 0;
+}
