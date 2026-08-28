@@ -108,6 +108,46 @@ int esqlc_txn_commit(void);    /* frees resources incl. open cursors */
 int esqlc_txn_rollback(void);  /* likewise */
 ```
 
+## Cursors — added by Gate 3
+
+The first growth of the ABI. Gates 1 and 2 added no entry points; a cursor is
+long-lived state spanning three statements, which one-shot `esqlc_stmt_exec`
+cannot express.
+
+```c
+/* Execute the cursor's statement and position before the first row. `sql` is
+   the text captured at DECLARE; `vars` are its input references, read now
+   rather than at declaration time (FR-004.12). */
+int esqlc_cursor_open(const char *name,
+                      const char *sql, size_t sql_len,
+                      const esqlc_hostvar_t *vars, int var_count);
+
+/* Advance one row and write the output descriptors. sqlcode 100 at end of set,
+   with host variables left untouched (FR-004.14). Idempotent once exhausted:
+   a further fetch also returns 100 and writes nothing (slice decision SD-3,
+   provisional — the manual does not specify the position after exhaustion). */
+int esqlc_cursor_fetch(const char *name,
+                       const esqlc_hostvar_t *vars, int var_count);
+
+/* Terminate the cursor and release its result set (FR-004.15). The prepared
+   statement survives, so a subsequent OPEN re-runs without re-preparing. */
+int esqlc_cursor_close(const char *name);
+```
+
+Cursors are identified **by name**, not by an opaque handle. The alternative
+puts more state in generated code for no gain at realistic cursor counts, and
+the name is already the source language's identifier for the thing.
+
+> **This pre-judges an open question.** 004 Q5 asks whether cursors are scoped to
+> the compilation unit or the function. A single runtime table keyed by name
+> assumes unit scope. Gate 3 exercises one cursor so nothing depends on it, but
+> if Q5 resolves to function scope these signatures need a scope qualifier.
+> Recorded here rather than discovered later.
+
+`esqlc_hostvar_t` is reused unaltered on the cursor path: `direction`
+distinguishes the `OPEN` inputs from the `FETCH` outputs, and `ind_addr` carries
+its Gate 2 meaning.
+
 ## Statement execution — outline
 
 Not frozen. Recorded to fix the shape the preprocessor emits against, so

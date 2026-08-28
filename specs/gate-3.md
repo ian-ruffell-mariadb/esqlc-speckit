@@ -1,6 +1,7 @@
 # Gate 3: read-only cursors
 
-**Status:** Ready to plan · **Specs:** 001, 002, 003, 004, 005 (scoped)
+**Status:** Planned · **Plan:** [gate-3-plan.md](gate-3-plan.md)
+**Specs:** 001, 002, 003, 004, 005 (scoped)
 **Depends on:** Gate 2 (merged, green, CI-enforced) · **Blocks:** positioned operations, then Phase 3
 
 Gate 1 proved data reaches MariaDB faithfully. Gate 2 proved one row comes back.
