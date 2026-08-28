@@ -79,6 +79,7 @@ is set here and is expensive to move later.
 | FR-001.22 | `WHENEVER` scope state (condition → action, in source order) is tracked and exposed to 005 at each statement site. | `[SQLPM/C §9 p.9-6]` |
 | FR-001.23 | `SQL SOURCE` includes further source; constructs from included source retain the included file's name and line numbers in diagnostics and `#line`. | `[SQLPM/C §3 p.3-3]` |
 | FR-001.24 | A C label prefix may immediately precede an embedded statement; the label is emitted in the C region and does not affect the construct's position class. | `[SQL/B §16.4 SR2]`, HP manual silent — see Q4 |
+| FR-001.25 | Every host-variable reference in a statement must resolve to a declaration inside a declare section. An unresolved reference is diagnosed, naming the variable; the statement is not emitted. | `[SQLPM/C §2 pp.2-1, 2-6]` |
 | NFR-001.1 | Statement bodies are carried as opaque token streams except for host-variable references, the leading keyword, and constructs 004/006/007 explicitly claim. | Principle I, given `SQLRM` deferral |
 | NFR-001.2 | The preprocessor is buildable and testable with a stub runtime and no database. | Principle V |
 | NFR-001.3 | Every diagnostic carries original file, line, and column. | Principle III |
@@ -161,6 +162,8 @@ and documented as a divergence.
 | `ESQLC-1010` | Host variable name is a `#define` LHS | error | `[§2 p.2-6]` |
 | `ESQLC-1011` | `SQL SOURCE` file not found | error | `[§3 p.3-3]` |
 | `ESQLC-1012` | Recognised statement with no implementing handler yet | error | Principle III |
+| `ESQLC-1013` | *(reserved — not yet assigned)* | — | — |
+| `ESQLC-1014` | Host-variable reference with no declaration in a declare section | error | `[§2 pp.2-1, 2-6]` |
 
 `ESQLC-1012` exists so that a partially-implemented preprocessor refuses work
 rather than emitting a no-op. It is expected to fire constantly during Phases 1–3

@@ -43,9 +43,18 @@ type-table-driven.
 | [004 Static DML & cursors](specs/004-static-dml-cursors/spec.md) | Single/multirow `SELECT`, `INSERT`/`UPDATE`/`DELETE`, full cursor lifecycle, cursor position and stability |
 | [005 Diagnostics](specs/005-diagnostics/spec.md) | `sqlcode`, `SQLCA`, `SQLSA`, `WHENEVER`, `INCLUDE STRUCTURES` versioning, the SQLCA/SQLSA access procedures |
 
-**Gate 2:** the conformance suite covers every §4 statement form and every §9
-diagnostic path, including `WHENEVER` precedence (NOT FOUND, then SQLERROR, then
-SQLWARNING) and the four mandatory conversion warnings from §2.
+**Gate 2 — retrieval**, specified in [specs/gate-2.md](specs/gate-2.md) and
+**ready to plan**. Deliberately the smallest retrieval slice: single-row
+`SELECT … INTO` by primary key, one indicator, and the not-found path. It
+discharges the two requirements Gate 1 had to drop as untestable (`FR-002.28`,
+`FR-003.12`) and resolves `DIV-052`. It touches only the two questions Gate 1
+already narrowed, carrying slice decisions SD-1 and SD-2 unchanged.
+
+**Gate 3 and the full Phase 2 gate:** the conformance suite covers every §4
+statement form and every §9 diagnostic path, including cursors, `WHENEVER`
+precedence (NOT FOUND, then SQLERROR, then SQLWARNING) and the four mandatory
+conversion warnings from §2. Gate 2 proves none of that — see its non-proof
+section.
 
 004 and 005 are concurrent and mutually dependent — cursor tests need `sqlcode`,
 and `SQLSA` statistics need cursor operations to populate them. Run them as one

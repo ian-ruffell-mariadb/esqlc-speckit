@@ -337,8 +337,20 @@ strips trailing spaces from a `CHAR(n)` on `SELECT` unless the session sets
 `PAD_CHAR_TO_FULL_LENGTH`. The same row reads back as 12 bytes or 18 depending
 only on `sql_mode`.
 
-**Rationale:** pending — this is newly found and the decision belongs to Gate 2,
-which owns retrieval. Three candidates:
+**Decision (2026-08-28): option 1.** The runtime sets `PAD_CHAR_TO_FULL_LENGTH`
+on its own session at connect. It makes every retrieval path faithful at once
+with no per-fetch cost, requires no customer source change, and the mode is
+narrow — it affects only fixed-length character retrieval padding. Gate 1's
+probes confirmed empirically that it yields the faithful 18-byte result.
+
+Option 2 stays the documented fallback if the session mode proves insufficient,
+for instance where a deployment's option file overrides `sql_mode` after connect.
+Gate 2 criterion 3 is the check that would catch that.
+
+Implemented by [Gate 2](../specs/gate-2.md); status moves to `accepted` when
+that slice lands.
+
+**Options considered:**
 
 1. The runtime sets `PAD_CHAR_TO_FULL_LENGTH` on its own session at connect,
    making retrieval faithful without touching customer source. Cheapest, but it

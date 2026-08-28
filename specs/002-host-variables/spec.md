@@ -148,6 +148,7 @@ declaration the preprocessor must notice.
 | `ESQLC-2006` | Unknown character-set keyword | error | `[§2 p.2-3]` |
 | `ESQLC-2007` | Host variable declaration outside a declare section | error | `[§2 p.2-1]` |
 | `ESQLC-2008` | `TYPE AS` qualifier combination not valid for the target type | error | `[§2 p.2-6]` |
+| `ESQLC-2009` | Character host variable array size of 1 or less — no room for a column byte plus the terminator placeholder, so the on-the-wire width would be zero or negative | error | `[§2 p.2-7]` |
 | `ESQLC-2010` | Character value right-truncated on retrieval | warn (runtime, via `sqlcode`) | `[§2 p.2-5]` |
 | `ESQLC-2011` | Fixed-point precision loss to floating point | warn (runtime) | `[§2 p.2-11]` |
 | `ESQLC-2012` | Fixed-point fraction discarded to integer | warn (runtime) | `[§2 p.2-11]` |
