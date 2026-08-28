@@ -1,6 +1,6 @@
 # esqlc-speckit Constitution
 
-Version 1.0.0 · Ratified 2026-08-27
+Version 1.1.0 · Ratified 2026-08-27 · Amended 2026-08-28
 
 These principles govern every spec, plan, and task in this repo. They are
 non-negotiable. A spec that violates one is rejected at review, not fixed
@@ -136,6 +136,42 @@ Linux. Undocumented divergences are the ones that cost a customer a weekend.
 
 ---
 
+## VIII. Slices may proceed where whole specs cannot
+
+A spec whose open questions do not affect a given vertical slice may be planned
+and implemented **for that slice only**, without being marked `Ready`.
+
+This exists because Principle I has a failure mode. Several questions across
+002, 003, 004 and 008 are answerable only from documents this project may never
+obtain (`SQLRM`, `CPG`, 9075-2). Under a strict Ready gate, those specs never
+become implementable, and the project stalls permanently on procurement rather
+than on engineering. That is not caution, it is paralysis.
+
+A slice is legitimate only with all four of:
+
+1. **An enumerated requirement subset.** Explicitly listed IDs. "The simple
+   parts" is not a subset.
+2. **An avoidance table.** Every open question in every spec the slice touches,
+   with a stated reason the slice does not depend on it. A question that *is*
+   touched must be narrowed to a scoped decision or the slice shrinks.
+3. **Scoped decisions recorded as provisional.** A narrow choice made to unblock
+   a slice is a *slice decision*, never a resolution. It does not close the
+   question, and it must be revisited when the question closes — a slice decision
+   that later contradicts the real answer is a defect to fix, not precedent to
+   defend.
+4. **A stated non-proof.** What a green slice does *not* demonstrate, so nobody
+   mistakes a passing gate for a working implementation.
+
+The spec's own status stays `Clarifying`. Slice status lives in the slice
+document. `/speckit.analyze` checks slices against these four conditions.
+
+**Rationale:** the alternative to slicing is either stalling indefinitely or
+quietly relaxing Principle I, and the second is far more dangerous — it would let
+guesses enter the implementation under cover of progress. Slicing keeps the
+guesses enumerated, provisional, and small.
+
+---
+
 ## Amendment
 
 Amendments require: a new version number here (semver — MAJOR for removing or
@@ -144,4 +180,11 @@ this file's history, and a re-run of `/speckit.analyze` across all active specs.
 
 ### History
 
+- **1.1.0** (2026-08-28) — Added Principle VIII, scoped slices. Prompted by
+  Gate 1: the slice was demonstrably achievable while three of its specs
+  remained `Clarifying`, and the strict Ready gate would have blocked it
+  indefinitely on documents that may never arrive. Principle I is unchanged;
+  VIII constrains how work may proceed around its gaps rather than relaxing it.
+  `/speckit.analyze` and `/speckit.plan` updated. Re-run of analyze across
+  active specs required.
 - **1.0.0** (2026-08-27) — Initial ratification. Seven principles.

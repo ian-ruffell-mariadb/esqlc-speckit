@@ -8,6 +8,17 @@ modified `specs/` directory).
 Refuse to plan a spec whose status is not `Ready` — report the unresolved open
 questions instead.
 
+**Exception, Principle VIII.** A spec may be planned for a named vertical slice
+while still `Clarifying`, if `$ARGUMENTS` names a slice document (e.g.
+`specs/gate-1.md`) that satisfies all four conditions: an enumerated requirement
+subset, a complete avoidance table, scoped decisions marked provisional, and a
+stated non-proof. Verify all four before planning — a slice missing any of them
+is refused like a non-Ready spec.
+
+When planning a slice, plan **only** its enumerated requirements. Note in the
+plan which components are stubs for out-of-slice behaviour, and make each stub
+fail loudly (`ESQLC-1012`-style) rather than silently no-op.
+
 Procedure:
 
 1. Read the constitution, the feature's `spec.md`, and

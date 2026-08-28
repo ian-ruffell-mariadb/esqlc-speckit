@@ -1,6 +1,6 @@
 # Feature Spec: Preprocessor core & pipeline
 
-**ID:** 001-preprocessor-core · **Status:** Clarifying
+**ID:** 001-preprocessor-core · **Status:** Ready
 **Manual coverage:** §3 pp.3-1..3-7; §6 pp.6-1..6-2, 6-25..6-27, 6-34
 **Depends on:** none
 
@@ -78,6 +78,7 @@ is set here and is expensive to move later.
 | FR-001.21 | With `WHENEVERLIST`, the active `WHENEVER` options are written to the listing after each processed statement. | `[SQLPM/C §3 p.3-7]` |
 | FR-001.22 | `WHENEVER` scope state (condition → action, in source order) is tracked and exposed to 005 at each statement site. | `[SQLPM/C §9 p.9-6]` |
 | FR-001.23 | `SQL SOURCE` includes further source; constructs from included source retain the included file's name and line numbers in diagnostics and `#line`. | `[SQLPM/C §3 p.3-3]` |
+| FR-001.24 | A C label prefix may immediately precede an embedded statement; the label is emitted in the C region and does not affect the construct's position class. | `[SQL/B §16.4 SR2]`, HP manual silent — see Q4 |
 | NFR-001.1 | Statement bodies are carried as opaque token streams except for host-variable references, the leading keyword, and constructs 004/006/007 explicitly claim. | Principle I, given `SQLRM` deferral |
 | NFR-001.2 | The preprocessor is buildable and testable with a stub runtime and no database. | Principle V |
 | NFR-001.3 | Every diagnostic carries original file, line, and column. | Principle III |
@@ -170,15 +171,15 @@ and its message must name the owning feature.
 | # | Question | Blocks | Resolution |
 |---|----------|--------|------------|
 | Q1 | How is declaration vs. executable position determined without a full C parser? | FR-001.11..14 | Resolved in plan §1: brace-depth and statement-boundary tracking, no full parse |
-| Q2 | Full `#pragma SQL` option set (deferred to `CPG`) | FR-001.9 | Freeze at the four §3 options + the two char options; document as divergence if `CPG` later adds more |
-| Q3 | Does `SQL SOURCE` participate in `#include` guard semantics? | FR-001.23 | Treat as textual inclusion with its own name/line tracking; no guard semantics |
-| Q4 | May a C label prefix immediately precede an embedded statement (`retry: EXEC SQL …`)? | FR-001.1, FR-001.12 | unresolved — ISO/IEC 9075-5:1999 §16.4 SR2 explicitly permits it; the HP manual is silent. C programmers do write this, and the scanner currently would not handle it |
+| Q2 | Full `#pragma SQL` option set (deferred to `CPG`) | FR-001.9 | **RESOLVED** — frozen at the four §3 options plus the two character options. A new divergence is registered if `CPG` is later obtained and contradicts the freeze |
+| Q3 | Does `SQL SOURCE` participate in `#include` guard semantics? | FR-001.23 | **RESOLVED** — textual inclusion with its own name and line tracking; no guard semantics |
+| Q4 | May a C label prefix immediately precede an embedded statement (`retry: EXEC SQL …`)? | FR-001.1, FR-001.12 | **RESOLVED** — yes, supported. See FR-001.24 |
 
 ## 7. Constitution check
 
 | Principle | Compliant? | Note |
 |-----------|-----------|------|
-| I manual is the contract | partial | All FRs cited; FR-001.18 marked derived; Q2 is an `[EXTERNAL]` gap with a stated freeze; Q4 is a gap the HP manual leaves silent and the ANSI standard fills |
+| I manual is the contract | yes | All FRs cited; FR-001.18 marked derived; FR-001.24 cited to the ANSI standard where the HP manual is silent; Q2's `[EXTERNAL]` gap closed by a documented freeze |
 | II source compatibility | yes | No new required syntax; pragma-as-CLI-option preserved; C regions byte-exact |
 | III no silent semantic change | yes | `ESQLC-1012` prevents silent no-ops for unimplemented statements |
 | IV manual-derived tests first | yes | Seven acceptance scenarios, each with a named fixture |

@@ -17,10 +17,18 @@ Phase 1  ──▶ Phase 2  ──▶ Phase 3  ──▶ Phase 4
 | [002 Host variables](specs/002-host-variables/spec.md) | Declare sections, full type mapping, indicators, `TYPE AS`, `SETSCALE` |
 | [003 Runtime & MariaDB binding](specs/003-runtime-mariadb-binding/spec.md) | `esqlc_*` ABI, connection model, transaction control |
 
-**Gate 1:** a program containing a declare section, `#pragma SQL`, `BEGIN WORK`,
-one `INSERT` with host variables, and `COMMIT WORK` preprocesses, compiles,
-links, and changes a MariaDB table. Nothing about diagnostics yet — `sqlcode` may
-be the only status channel.
+**Gate 1:** fully specified in [specs/gate-1.md](specs/gate-1.md) — a declare
+section, `#pragma SQL`, `BEGIN WORK`, one `INSERT` with host variables, and
+`COMMIT WORK` preprocesses, compiles against the ABI header with no MariaDB
+header present, links, runs, and changes a MariaDB table. A `ROLLBACK WORK`
+variant proves the transaction is real rather than autocommit in disguise.
+
+**Status: ready to plan.** The slice touches exactly one open question across its
+three specs — the `UNKNOWN` character-set corner of 002 Q4 — which is narrowed by
+a recorded slice decision. Notably, 003 Q1 concerns statements *outside* a
+transaction, so keeping explicit `BEGIN`/`COMMIT WORK` in the gate **avoids** it;
+dropping them would make the gate riskier, not simpler. Proceeding under
+Principle VIII while 002 and 003 remain `Clarifying`.
 
 Rationale for this ordering: 003 before 004 because there is no way to test a
 `SELECT … INTO` without a runtime, and no way to design the runtime ABI without

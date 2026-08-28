@@ -42,6 +42,20 @@ Checks:
   six required fields.
 - Every divergence entry is referenced by at least one spec.
 
+**Principle VIII — slices**
+
+For every slice document (e.g. `specs/gate-*.md`):
+- The requirement subset is enumerated as explicit IDs, not described.
+- The avoidance table covers **every** open question in every spec the slice
+  touches. A missing row is a finding; so is a row whose stated reason is
+  contradicted by the slice's own fixture.
+- Every scoped decision is labelled provisional and names the question it
+  narrows, without claiming to resolve it.
+- A non-proof section exists and is specific.
+- No spec has been marked `Ready` on the strength of a slice.
+- Every requirement in the subset still carries its citation (Principle I is not
+  relaxed inside a slice).
+
 **Cross-feature**
 - `docs/traceability.md` has no manual section owned by two features, and none
   unowned.
