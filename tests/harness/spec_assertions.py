@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FIX = ROOT / "tests" / "conformance" / "gate-1"
 
 DESC_RE = re.compile(
-    r"\{\s*&(?P<name>\w+),\s*0,\s*(?P<type>ESQLC_T_\w+),\s*"
+    r"\{\s*&(?P<name>\w+),\s*(?P<ind>&?\w+),\s*(?P<type>ESQLC_T_\w+),\s*"
     r"(?P<width>\d+)u,\s*(?P<capacity>\d+)u,\s*(?P<scale>-?\d+),\s*"
     r"(?P<signed>\d+),\s*(?P<dir>ESQLC_DIR_\w+),\s*(?P<charset>\d+)\s*\}"
 )
@@ -178,6 +178,53 @@ def assert_spans(out: str) -> None:
           "SQL comment text must not survive into the statement")
 
 
+def assert_select(out: str) -> None:
+    """rt/select_into.sqlc — Gate 2: direction by landmark, indicators."""
+    d = {x["name"]: x for x in descriptors(out)}
+
+    # FR-001.16: references inside the INTO region are outputs; everything
+    # else — notably the WHERE-clause key — stays an input.
+    check("FR-001.16", d.get("part_desc", {}).get("dir") == "ESQLC_DIR_OUT",
+          "an INTO-list reference must be marked DIR_OUT")
+    check("FR-001.16", d.get("weight", {}).get("dir") == "ESQLC_DIR_OUT",
+          "an INTO-list reference must be marked DIR_OUT")
+    check("FR-001.16", d.get("part_num", {}).get("dir") == "ESQLC_DIR_IN",
+          "a WHERE-clause reference must stay DIR_IN")
+
+    # FR-002.15: an indicator supplied in source becomes a real address;
+    # one not supplied becomes 0, which the runtime reads as "no indicator".
+    check("FR-002.15", d.get("weight", {}).get("ind") == "&weight_ind",
+          "a supplied indicator must be emitted as its address")
+    check("FR-002.15", d.get("part_desc", {}).get("ind") == "0",
+          "an absent indicator must be emitted as 0")
+
+    # FR-003.10: inputs are still parameterised, outputs are not placeholders.
+    m = EXEC_RE.search(out)
+    check("FR-003.10", m is not None, "the SELECT must reach esqlc_stmt_exec")
+    if m:
+        sql = m.group("sql")
+        check("FR-003.10", ":" not in sql,
+              f"no host-variable reference may survive into the statement: {sql!r}")
+        check("FR-003.10", "INTO" not in sql.upper(),
+              f"the INTO clause is a binding instruction, not SQL to send: {sql!r}")
+        check("FR-003.10", sql.count("?") == 1,
+              f"only the WHERE input becomes a placeholder: {sql!r}")
+
+
+def assert_insert_directions(out: str) -> None:
+    """insert.sqlc — the INSERT INTO landmark regression guard.
+
+    `INSERT INTO parts` contains the INTO landmark. If direction
+    classification leaked out of the SELECT handler, these would flip to
+    DIR_OUT and Gate 1's working path would break silently.
+    """
+    ds = descriptors(out)
+    check("FR-001.16", len(ds) == 2, f"expected two INSERT descriptors, got {len(ds)}")
+    for x in ds:
+        check("FR-001.16", x["dir"] == "ESQLC_DIR_IN",
+              f"INSERT reference {x['name']} must stay DIR_IN despite 'INSERT INTO'")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: spec_assertions.py <esqlcpp>", file=sys.stderr)
@@ -190,6 +237,12 @@ def main() -> int:
     out = emit(pp, FIX / "hostvar_spans.sqlc")
     if out:
         assert_spans(out)
+    out = emit(pp, FIX / "rt" / "select_into.sqlc")
+    if out:
+        assert_select(out)
+    out = emit(pp, FIX / "insert.sqlc")
+    if out:
+        assert_insert_directions(out)
 
     for f in failures:
         print(f"FAIL {f}")

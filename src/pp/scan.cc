@@ -187,6 +187,16 @@ ScanResult scan(const std::string &src, Diag &d) {
                             break;
                         }
                     }
+                    // --- landmarks (T250) ----------------------------------
+                    // Recorded here, inside the body loop, so the string and
+                    // comment cases above have already been handled: an INTO
+                    // in a "literal" can never reach this point.
+                    if (k.into_off == Construct::npos && word_at(src, c.i, "INTO")) {
+                        k.into_off = body.size();
+                    } else if (k.from_off == Construct::npos && word_at(src, c.i, "FROM")) {
+                        k.from_off = body.size();
+                    }
+
                     // --- host variable reference (FR-001.16) ---------------
                     if (c.cur() == ':' && c.peek() != ':') {
                         std::size_t bstart = body.size();

@@ -9,7 +9,8 @@
 #line 5 "tests/conformance/gate-1/hostvar_spans.sqlc"
 
 int main(void) {
-  #line 7 "tests/conformance/gate-1/hostvar_spans.sqlc"
+  
+#line 7 "tests/conformance/gate-1/hostvar_spans.sqlc"
 do {
   esqlc_hostvar_t __esqlc_hv_1[2] = {
     { &a, 0, ESQLC_T_INT, 2u, 2u, 0, 1, ESQLC_DIR_IN, 0 },

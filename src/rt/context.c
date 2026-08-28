@@ -144,6 +144,27 @@ int esqlc_rt_connect(void) {
     /* Explicit transaction control only; COMMIT/ROLLBACK WORK must mean
      * something (DIV-010, FR-003.6). */
     mysql_autocommit(s->conn, 1);
+
+    /* T255 / DIV-052 — SQL/MP fixed-length character columns are always
+     * blank-padded, and §2 p.2-8 ties comparison behaviour to that. MariaDB
+     * strips trailing blanks from CHAR on retrieval unless this mode is set.
+     *
+     * APPEND rather than assign: replacing sql_mode wholesale would clobber
+     * every other mode the server or the deployment configured. */
+    {
+        static const char q[] =
+            "SET SESSION sql_mode = CONCAT(@@sql_mode, ',PAD_CHAR_TO_FULL_LENGTH')";
+        if (mysql_real_query(s->conn, q, (unsigned long)(sizeof q - 1)) != 0) {
+            fprintf(stderr,
+                    "ESQLC-3001: cannot set PAD_CHAR_TO_FULL_LENGTH: %s\n",
+                    mysql_error(s->conn));
+            esqlc_rt_set_err_code(-3001);
+            mysql_close(s->conn);
+            s->conn = NULL;
+            return -1;
+        }
+    }
+
     s->connected = true;
     return 0;
 }

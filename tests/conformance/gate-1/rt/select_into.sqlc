@@ -1,0 +1,33 @@
+/* T201/T209 — happy path with the poison convention.
+   Host variables are pre-filled with a sentinel so that "the runtime must not
+   write here" is falsifiable: byte 18 of part_desc must still hold 0xAA after
+   the call (FR-002.28). */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+  char  part_desc[19];
+  short weight;
+  short weight_ind;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  memset(part_desc, 0xAA, sizeof part_desc);      /* poison, all 19 bytes */
+  weight = -32000; weight_ind = -32000;           /* poison */
+  part_num = 4102;
+
+  EXEC SQL BEGIN WORK;
+  EXEC SQL SELECT part_desc, weight
+             INTO :part_desc, :weight INDICATOR :weight_ind
+             FROM parts
+            WHERE part_num = :part_num;
+  if (sqlcode != 0) { long s = sqlcode; EXEC SQL ROLLBACK WORK;
+                      fprintf(stderr, "sqlcode %ld\n", s); return 1; }
+  EXEC SQL COMMIT WORK;
+
+  /* len|weight|ind|terminator-byte-survived */
+  printf("%.18s|%d|%d|%02X\n", part_desc, weight, weight_ind,
+         (unsigned char)part_desc[18]);
+  return 0;
+}

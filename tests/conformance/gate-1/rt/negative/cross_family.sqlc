@@ -1,0 +1,19 @@
+/* T205 — a character host variable against a numeric column. Conversion
+   happens within families, never between them (FR-002.22), so this must be
+   refused rather than coerced. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char wrong[19];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  memset(wrong, 0xAA, sizeof wrong);
+  part_num = 4102;
+  EXEC SQL BEGIN WORK;
+  EXEC SQL SELECT weight INTO :wrong FROM parts WHERE part_num = :part_num;
+  { long s = sqlcode; EXEC SQL ROLLBACK WORK;
+    printf("sqlcode=%ld\n", s);
+    return s < 0 ? 0 : 1; }
+}

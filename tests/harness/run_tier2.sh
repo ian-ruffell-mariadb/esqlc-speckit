@@ -130,5 +130,45 @@ if build "$RT/negative/bad_config.c" "$TMP/bad_config"; then
                   || { bad "bad_config" "exit $rc"; sed 's/^/    /' "$TMP/bad.out"; }
 fi
 
+# =====================================================================
+# Gate 2 — retrieval. Each case re-seeds, because the Gate 1 cases above
+# delete rows. Seeded rows: 4102 has a weight, 4103 has a null weight.
+# =====================================================================
+seed() { mdb < "$FIX/seed.sql" >/dev/null; }
+
+# --- T230/T231 happy path, and the terminator byte must survive ----------
+seed
+if run_case select_into "$RT/select_into.sqlc" 0; then
+  got=$(cat "$TMP/select_into.out")
+  want="HEX NUT, 8MM      |42|0|AA"
+  [ "$got" = "$want" ] && ok "select_into + no_terminator (FR-003.12, FR-004.1, FR-002.28)" \
+                       || bad "select_into" "got [$got] want [$want]"
+fi
+
+# --- T235 DIV-052: trailing blanks must survive retrieval ----------------
+# The expected value above is 18 bytes ending in six blanks; if MariaDB
+# stripped them the comparison fails, so criterion 3 is covered by the same
+# assertion rather than by trusting that sql_mode was set.
+
+# --- T232 not found: sqlcode 100 and nothing written ---------------------
+seed
+run_case not_found "$RT/not_found.sqlc" 0 && \
+  ok "not_found_untouched (FR-004.2, FR-003.13, FR-005.1)"
+
+# --- T233 null column with an indicator ----------------------------------
+seed
+run_case null_indicator "$RT/null_indicator.sqlc" 0 && \
+  ok "null_indicator = -1 (FR-002.16)"
+
+# --- T234 null column with NO indicator ----------------------------------
+seed
+run_case null_no_ind "$RT/negative/null_no_indicator.sqlc" 0 && \
+  ok "null_no_indicator yields 8423 (FR-005.2)"
+
+# --- T237 cross-family refused -------------------------------------------
+seed
+run_case cross_family "$RT/negative/cross_family.sqlc" 0 && \
+  ok "cross_family refused (FR-002.22)"
+
 echo "tier2: $pass passed, $fail failed"
 exit $(( fail > 0 ))

@@ -141,5 +141,24 @@ jobs:
             exit 1
           fi
           [ "$rc" = "0" ] || exit "$rc"
-          grep -q "tier2: 8 passed, 0 failed" /tmp/t2.log || {
-            echo "::error::expected all 8 Tier 2 checks to pass"; exit 1; }
+          # Parse the tally rather than matching a literal count. The first
+          # version of this step grepped for "8 passed, 0 failed", which was
+          # correct for Gate 1 and went stale the moment Gate 2 added five
+          # checks — CI failed with every test passing.
+          #
+          # Two conditions, both needed:
+          #   failed = 0   nothing regressed
+          #   passed >= 8  the suite did not silently shrink. A collapsed
+          #                suite that discovers no fixtures would otherwise
+          #                report "0 passed, 0 failed" and look green.
+          # 8 is the Gate 1 floor and is deliberately a floor, not an equality,
+          # so adding checks never breaks this step again.
+          line=$(grep -oE 'tier2: [0-9]+ passed, [0-9]+ failed' /tmp/t2.log | tail -1)
+          [ -n "$line" ] || { echo "::error::no Tier 2 tally found"; exit 1; }
+          passed=$(echo "$line" | sed -E 's/tier2: ([0-9]+) passed.*/\1/')
+          failed=$(echo "$line" | sed -E 's/.*, ([0-9]+) failed/\1/')
+          echo "Tier 2 tally: $passed passed, $failed failed"
+          [ "$failed" = "0" ] || { echo "::error::$failed Tier 2 checks failed"; exit 1; }
+          [ "$passed" -ge 8 ] || {
+            echo "::error::only $passed Tier 2 checks ran; the suite shrank below its floor"
+            exit 1; }

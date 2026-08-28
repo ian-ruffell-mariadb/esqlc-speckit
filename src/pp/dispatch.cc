@@ -17,9 +17,9 @@ static const Handler kHandlers[] = {
     {"COMMIT WORK",           PosClass::Exec, nullptr},
     {"ROLLBACK WORK",         PosClass::Exec, nullptr},
     {"INSERT",                PosClass::Exec, nullptr},
+    {"SELECT",                PosClass::Exec, nullptr},   // Gate 2: single-row only
 
     // --- recognised, deliberately unimplemented -------------------------
-    {"SELECT",             PosClass::Exec, "004 (static DML & cursors)"},
     {"UPDATE",             PosClass::Exec, "004 (static DML & cursors)"},
     {"DELETE",             PosClass::Exec, "004 (static DML & cursors)"},
     {"DECLARE CURSOR",     PosClass::Decl, "004 (static DML & cursors)"},
