@@ -38,7 +38,7 @@ jobs:
             build-essential cmake python3 git ca-certificates
           rm -rf /var/lib/apt/lists/*
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Assert MariaDB really is absent
         # Guards against the base image gaining a client later and silently
@@ -110,7 +110,7 @@ jobs:
       ESQLC_USER: root
       ESQLC_DATABASE: esqlc_gate1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install toolchain and MariaDB client
         run: |

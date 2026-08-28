@@ -88,6 +88,11 @@ add_test(NAME spec_assertions
          COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/harness/spec_assertions.py
                  $<TARGET_FILE:esqlcpp>)
 
+# Every diagnostic the code can emit must be registered in a spec. Two codes
+# slipped through Gate 1 unregistered; this makes the check structural.
+add_test(NAME diag_registry
+         COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/diag_registry.sh)
+
 # Tier 2 needs a live server. It skips rather than fails when none is
 # reachable, so NFR-001.2 (Tier 1 runs with no MariaDB) still holds.
 if(TARGET esqlc)
