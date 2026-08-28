@@ -78,6 +78,8 @@ declaration the preprocessor must notice.
 | FR-002.27 | Fixed-point to integer transfer stores the integral part and returns a data-loss warning. | `[SQLPM/C §2 p.2-11]` |
 | FR-002.28 | On retrieval into a character array, no null terminator is appended. | `[SQLPM/C §2 p.2-7]` |
 | FR-002.29 | `CHAR_AS_ARRAY` suppresses the extra byte that `CHAR_AS_STRING` implies for generated character declarations. | `[SQLPM/C §2 pp.2-7, 2-9]` |
+| FR-002.30 | On input, a fixed-length character host variable transmits exactly the column's length in bytes, taken verbatim from the array — the runtime does **not** scan for a null terminator, does not truncate at one, and does not pad. An under-filled array therefore stores its null byte, exactly as SQL/MP does. | `[SQLPM/C §2 p.2-8]` |
+| FR-002.31 | Blank-padding an under-filled array before insertion is the **program's** responsibility, not the runtime's; the runtime must not silently repair it. | `[SQLPM/C §2 p.2-8]`, Constitution III |
 | NFR-002.1 | Every mapping row is covered by a round-trip conformance test: declare, insert, retrieve, compare. | Principle IV |
 | NFR-002.2 | Width, signedness, and `sizeof` of every generated declaration are asserted statically. | Principle VI |
 

@@ -121,10 +121,51 @@ int esqlc_stmt_exec(const char *body, size_t body_len,
                     const esqlc_hostvar_t *vars, int var_count);
 ```
 
-`esqlc_hostvar_t` must express everything 002 decides: width-exact type
-(`DIV-001`), character set, scale from `SETSCALE` or C `fixed`, the `TYPE AS`
-assertion, indicator pointer, and direction. Its definition lands here when 002
-reaches `Ready`.
+### `esqlc_hostvar_t`
+
+Defined by the Gate 1 plan under Principle VIII, ahead of 002 reaching `Ready`.
+Fields the slice exercises are frozen; the rest are declared so the layout and
+the type-family numbering are stable, and any unexercised type reaches
+`ESQLC-1012` rather than a wrong bind.
+
+```c
+#define ESQLC_DIR_IN   1
+#define ESQLC_DIR_OUT  2   /* declared, unused until Gate 2 */
+
+#define ESQLC_T_CHAR_FIXED   1   /* Gate 1 */
+#define ESQLC_T_INT          2   /* Gate 1 — width in `width` */
+#define ESQLC_T_CHAR_VAR     3
+#define ESQLC_T_DECIMAL      4
+#define ESQLC_T_FLOAT        5
+#define ESQLC_T_DATETIME     6
+#define ESQLC_T_INTERVAL     7
+
+typedef struct {
+    void       *addr;
+    short      *ind_addr;    /* indicator, or NULL */
+    unsigned    type;        /* ESQLC_T_*                                     */
+    unsigned    width;       /* bytes on the wire: 2/4/8, or column length    */
+    unsigned    capacity;    /* declared array size, incl. terminator byte    */
+    signed char scale;       /* SETSCALE or C `fixed`                         */
+    unsigned char is_signed;
+    unsigned char direction; /* ESQLC_DIR_*                                   */
+    unsigned short charset;  /* SQLDA charset id; 0 = UNKNOWN                 */
+} esqlc_hostvar_t;
+
+_Static_assert(sizeof(esqlc_hostvar_t) <= 40, "descriptor grew unexpectedly");
+_Static_assert(offsetof(esqlc_hostvar_t, addr) == 0, "addr must lead");
+```
+
+**`width` and `capacity` are deliberately separate**, and this is the load-bearing
+detail of the whole descriptor. For `CHAR(18)` declared `char[19]`, `width` is 18
+and `capacity` 19. The runtime binds exactly `width` bytes verbatim from `addr` —
+no `strlen`, no truncation at a null byte, no padding (FR-002.30, FR-002.31). A
+single `length` field is precisely how a `strlen`-based binding sneaks in and
+silently diverges from SQL/MP on the commonest column type.
+
+Fields not yet exercised: `ind_addr` and `ESQLC_DIR_OUT` (Gate 2), `scale`
+(pending 002 Q2/Q3), `charset` beyond `0` (pending 002 Q4; Gate 1 binds `UNKNOWN`
+as the connection default per slice decision SD-1).
 
 ## Open against this contract
 

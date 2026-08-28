@@ -1,6 +1,7 @@
 # Gate 1: the first vertical slice
 
-**Status:** Ready to plan · **Specs:** 001, 002, 003 (scoped) · **Blocks:** Phase 2
+**Status:** Planned · **Plan:** [gate-1-plan.md](gate-1-plan.md)
+**Specs:** 001, 002, 003 (scoped) · **Blocks:** Phase 2
 
 Gate 1 is the smallest program that proves the architecture end to end. It is
 not a milestone in the sense of "a lot of work finished" — it is a *falsification
@@ -60,8 +61,13 @@ variables, two type families — no more.
    include path** (AS-003.5 — proves Constitution V holds).
 3. It links against the real runtime and runs.
 4. The row is present in MariaDB afterwards, queried from a second connection,
-   with `part_desc` blank-padded to 18 characters and **no null terminator
-   stored** (FR-002.28, and the §2 p.2-8 padding rule).
+   with `part_desc` holding exactly the 18 bytes the program placed in the array
+   — blank-padded by the program, with **no null terminator stored**
+   (FR-002.30, FR-002.31).
+4a. A variant that deliberately under-fills the array **stores its null byte**,
+   proving the runtime neither trims at the terminator nor pads on the program's
+   behalf. This is the check most likely to diverge from SQL/MP by accident,
+   because a `strlen`-based binding would silently "fix" it.
 5. `sqlcode` is `0`.
 6. `ROLLBACK WORK` on the failure path is exercised by a variant fixture that
    violates the primary key, leaving the table unchanged.
@@ -140,9 +146,15 @@ The requirements this slice must satisfy. Anything not listed is out of scope fo
 Gate 1 and stays `Clarifying`.
 
 **001:** FR-001.1, .2, .7, .11, .12, .15, .16, .18, .19; NFR-001.1, .2, .3
-**002:** FR-002.1, .2, .3, .9, .28; NFR-002.2
-**003:** FR-003.1, .2, .3, .4, .5, .6, .8, .10, .12, .13, .16, .17, .19, .21;
+**002:** FR-002.1, .2, .3, .9, .30, .31; NFR-002.2
+**003:** FR-003.1, .2, .3, .4, .5, .6, .8, .10, .13, .16, .17, .19, .21;
 NFR-003.1, .2, .3
+
+**Deferred to Gate 2** (both govern retrieval, which this slice has no `SELECT`
+to exercise): FR-002.28 no terminator appended on output, FR-003.12 output
+binding. Both were in an earlier draft of this set and were removed during
+planning, when the requirement→component map showed neither could be mapped to a
+test the slice can actually run.
 
 Notably absent and deliberately so: every `WHENEVER` requirement, all of
 `SQLCA`/`SQLSA`, indicator variables, `TYPE AS`, cursors, and every conversion
