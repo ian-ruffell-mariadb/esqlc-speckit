@@ -50,11 +50,27 @@ discharges the two requirements Gate 1 had to drop as untestable (`FR-002.28`,
 `FR-003.12`) and resolves `DIV-052`. It touches only the two questions Gate 1
 already narrowed, carrying slice decisions SD-1 and SD-2 unchanged.
 
-**Gate 3 and the full Phase 2 gate:** the conformance suite covers every §4
-statement form and every §9 diagnostic path, including cursors, `WHENEVER`
-precedence (NOT FOUND, then SQLERROR, then SQLWARNING) and the four mandatory
-conversion warnings from §2. Gate 2 proves none of that — see its non-proof
-section.
+**Gate 3 — read-only cursors**, specified in [specs/gate-3.md](specs/gate-3.md)
+and **ready to plan**. `DECLARE CURSOR`, `OPEN`, a `FETCH` loop, `CLOSE`. No
+`FOR UPDATE`, no positioned operations, no cursor stability.
+
+Unlike Gates 1 and 2, this one collides with 004 rather than dodging it. Two
+open questions are unavoidable: **Q9** — the `DECLARE … CURSOR` dispatch defect
+Gate 2 found — must be *fixed*, since it is the slice's entry point; and **Q6**,
+the cursor position after fetching past the last row, is structurally
+unavoidable because that is how a loop terminates. Q6 is narrowed by slice
+decision SD-3, Q9 is closed by repair.
+
+It is also where the runtime ABI finally grows. Gates 1 and 2 added no entry
+points; a cursor is long-lived state spanning three statements, which the
+one-shot `esqlc_stmt_exec` cannot express. Gate 2's plan predicted this, and it
+arrives where predicted.
+
+**Gate 4 and the full Phase 2 gate:** positioned `UPDATE`/`DELETE` (where
+`DIV-051` and 004 Q7 live), cursor stability, every §9 diagnostic path including
+`WHENEVER` precedence (NOT FOUND, then SQLERROR, then SQLWARNING), and the four
+mandatory conversion warnings from §2. None of the three gates proves any of
+that — see each one's non-proof section.
 
 004 and 005 are concurrent and mutually dependent — cursor tests need `sqlcode`,
 and `SQLSA` statistics need cursor operations to populate them. Run them as one
