@@ -30,7 +30,17 @@ add_executable(esqlcpp
 target_include_directories(esqlcpp PRIVATE src/pp)
 
 # ---- the runtime: the only thing that knows MariaDB exists ------------------
-find_program(MARIADB_CONFIG NAMES mariadb_config mysql_config)
+# -DESQLC_NO_MARIADB=ON forces the no-MariaDB path on a machine that has it
+# installed, so NFR-001.2 is verifiable locally and not only in CI.
+option(ESQLC_NO_MARIADB "Pretend MariaDB is absent (for verifying NFR-001.2)" OFF)
+
+if(ESQLC_NO_MARIADB)
+    set(MARIADB_CONFIG "")
+    message(STATUS "ESQLC_NO_MARIADB=ON — runtime target skipped deliberately")
+else()
+    find_program(MARIADB_CONFIG NAMES mariadb_config mysql_config)
+endif()
+
 if(MARIADB_CONFIG)
     execute_process(COMMAND ${MARIADB_CONFIG} --include
                     OUTPUT_VARIABLE MARIADB_INCLUDE OUTPUT_STRIP_TRAILING_WHITESPACE)

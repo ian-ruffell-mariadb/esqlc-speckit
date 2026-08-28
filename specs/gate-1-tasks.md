@@ -22,7 +22,17 @@ with no dependency between them; every task lists requirement IDs.
 | Phase D diagnostics | 6/6 firing at correct code, line, column |
 | Phase E | partial |
 
-`ctest` is 6/6 with a server and 5/6 + 1 skip without one.
+`ctest` is 6/6 with a server and 5/6 + 1 skip without one. Under
+`-DESQLC_NO_MARIADB=ON` it is 5/5 with the runtime target and `tier2_live`
+absent entirely — which is the shape CI's first job runs in.
+
+**CI (T084–T086) is in place**: `.github/workflows/ci.yml`, two jobs.
+`tier1-no-mariadb` runs in a `debian:bookworm-slim` container — not the hosted
+runner image, which ships a MySQL client and would have made the job prove
+nothing — and asserts up front that no MariaDB tool, header or library is
+present before building. `tier2-live` runs against a MariaDB service container
+and asserts Tier 2 did **not** skip, since a silent skip would turn a broken
+database into a green build.
 
 ### Process debts — both now paid (2026-08-28)
 
