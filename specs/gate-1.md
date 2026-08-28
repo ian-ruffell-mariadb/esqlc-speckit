@@ -1,6 +1,7 @@
 # Gate 1: the first vertical slice
 
-**Status:** Planned · **Plan:** [gate-1-plan.md](gate-1-plan.md)
+**Status:** Tasked · **Plan:** [gate-1-plan.md](gate-1-plan.md) ·
+**Tasks:** [gate-1-tasks.md](gate-1-tasks.md)
 **Specs:** 001, 002, 003 (scoped) · **Blocks:** Phase 2
 
 Gate 1 is the smallest program that proves the architecture end to end. It is
