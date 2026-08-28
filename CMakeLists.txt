@@ -69,3 +69,20 @@ add_test(NAME abi_isolation
          COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/abi_isolation.sh $<TARGET_FILE:esqlcpp>)
 add_test(NAME contract_sync
          COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/contract_sync.sh)
+
+# Spec-derived assertions. These are the specification tests; the golden files
+# above are regression guards. A snapshot asserts what the code does, an
+# assertion asserts what the requirement demands — only the latter can fail
+# when the code is wrong but self-consistent.
+add_test(NAME spec_assertions
+         COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/harness/spec_assertions.py
+                 $<TARGET_FILE:esqlcpp>)
+
+# Tier 2 needs a live server. It skips rather than fails when none is
+# reachable, so NFR-001.2 (Tier 1 runs with no MariaDB) still holds.
+if(TARGET esqlc)
+    add_test(NAME tier2_live
+             COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/run_tier2.sh
+                     $<TARGET_FILE:esqlcpp> $<TARGET_FILE:esqlc>)
+    set_tests_properties(tier2_live PROPERTIES SKIP_RETURN_CODE 77)
+endif()

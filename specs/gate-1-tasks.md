@@ -18,21 +18,38 @@ with no dependency between them; every task lists requirement IDs.
 | Tier 1 suite (golden, negative, isolation, contract) | **4/4 automated, passing** |
 | Preprocessor Phase C | done for slice scope |
 | Runtime Phase C | done for slice scope |
-| Tier 2 live-database checks | **verified by hand, NOT automated** |
+| Tier 2 live-database checks | **8/8 automated, passing; skips cleanly with no server** |
 | Phase D diagnostics | 6/6 firing at correct code, line, column |
 | Phase E | partial |
 
-### Process deviations, stated rather than buried
+`ctest` is 6/6 with a server and 5/6 + 1 skip without one.
 
-1. **Principle IV was not honoured for most of Phase C.** Implementation was
-   written before its tests. The negative cases and their `.expected.diag`
-   files are hand-authored and therefore genuine, but the golden `.expected.c`
-   files were **snapshotted from actual output**. A snapshot asserts what the
-   code does, not what the spec requires, and would happily enshrine a bug.
-   They are regression guards, not specification tests. Re-deriving them from
-   the spec is outstanding work.
-2. **Tier 2 is not wired into `ctest`.** T040–T054 were executed by hand
-   against an ephemeral server. Until they are automated they will rot.
+### Process debts — both now paid (2026-08-28)
+
+1. ~~**Principle IV was not honoured for most of Phase C.**~~ **Fixed.** The
+   golden `.expected.c` files were snapshots, asserting what the code does
+   rather than what the spec requires. They are retained as regression guards,
+   and `tests/harness/spec_assertions.py` now carries **26 specification
+   assertions, each naming the requirement it derives from** — width/capacity
+   separation, placeholder-to-descriptor correspondence, no host-variable
+   reference surviving into statement text, no value appearing in statement
+   text, pragma consumption, verbatim C, `#line` presence, and the span-capture
+   rules for strings and comments.
+
+   Proven load-bearing by mutation: injecting `width = capacity` — the mistake
+   a `strlen`- or `sizeof`-based implementation makes — fails exactly the two
+   FR-002.30 assertions, by name. Writing them also caught a defect in the
+   FR-003.1 check itself, which had been matching identifiers inside comments
+   and string literals.
+
+2. ~~**Tier 2 is not wired into `ctest`.**~~ **Fixed.**
+   `tests/harness/run_tier2.sh` automates all eight live checks and is a ctest
+   target. It reads the same `ESQLC_*` variables the runtime resolves, so the
+   harness cannot test a different database than the code sees, and it exits 77
+   (`SKIP_RETURN_CODE`) when no server is reachable, preserving NFR-001.2.
+
+### Remaining deviations
+
 3. **C11, not the C99 the plan named.** Principle VI mandates `_Static_assert`
    on the ABI structure and C99 has no such facility, so the plan's language
    choice was incompatible with the constitution. C11 resolves it.

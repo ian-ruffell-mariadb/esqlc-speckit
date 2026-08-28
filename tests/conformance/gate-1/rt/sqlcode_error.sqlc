@@ -1,0 +1,20 @@
+/* T050 — FR-003.13. A duplicate key must yield a negative sqlcode, and the
+   process must still be running to observe it. Note the save-before-rollback:
+   every statement resets sqlcode, ROLLBACK included (§9 p.9-13). */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  long failed_with;
+  part_num = 9; memcpy(part_desc, "DUPLICATE KEY ROW ", 18);
+  EXEC SQL BEGIN WORK;
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  failed_with = sqlcode;
+  EXEC SQL ROLLBACK WORK;
+  printf("sqlcode=%ld\n", failed_with);
+  return failed_with < 0 ? 0 : 1;
+}
