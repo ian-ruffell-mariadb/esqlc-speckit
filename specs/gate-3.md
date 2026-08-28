@@ -1,6 +1,7 @@
 # Gate 3: read-only cursors
 
-**Status:** Planned · **Plan:** [gate-3-plan.md](gate-3-plan.md)
+**Status:** Tasked · **Plan:** [gate-3-plan.md](gate-3-plan.md) ·
+**Tasks:** [gate-3-tasks.md](gate-3-tasks.md)
 **Specs:** 001, 002, 003, 004, 005 (scoped)
 **Depends on:** Gate 2 (merged, green, CI-enforced) · **Blocks:** positioned operations, then Phase 3
 
