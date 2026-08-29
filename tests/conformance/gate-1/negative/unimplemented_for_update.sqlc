@@ -1,0 +1,8 @@
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short min_num;
+EXEC SQL END DECLARE SECTION;
+EXEC SQL DECLARE upcur CURSOR FOR SELECT part_num FROM parts
+         WHERE part_num >= :min_num FOR UPDATE;
+int main(void) { return 0; }

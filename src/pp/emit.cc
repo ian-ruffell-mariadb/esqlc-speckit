@@ -7,6 +7,9 @@
 #include "pp.h"
 #include <sstream>
 #include <algorithm>
+#include <map>
+#include <cstring>
+#include <cctype>
 
 namespace pp {
 namespace {
@@ -130,6 +133,52 @@ std::string select_sql(const Construct &k, const std::vector<Classified> &cls) {
     return out;
 }
 
+// ---- cursor support (T362-T368) ---------------------------------------
+// What a DECLARE records for its later OPEN and FETCH. This is the first
+// cross-construct state the preprocessor has held: DECLARE is a declaration
+// carrying the text, OPEN is where that text runs.
+struct CursorInfo {
+    std::string symbol;                 // name of the emitted static const
+    std::vector<std::string> inputs;    // host variables in the WHERE clause
+    std::size_t sql_len = 0;
+};
+
+// Find a keyword at a token boundary, skipping "..." strings. The body has
+// already had comments removed by the scanner, so only strings need care.
+std::size_t find_kw(const std::string &b, const char *kw) {
+    const std::size_t n = std::strlen(kw);
+    for (std::size_t i = 0; i < b.size(); ++i) {
+        if (b[i] == '"') {                       // skip a string literal
+            ++i;
+            while (i < b.size() && b[i] != '"') ++i;
+            continue;
+        }
+        if (i + n > b.size()) break;
+        bool hit = true;
+        for (std::size_t k = 0; k < n; ++k)
+            if (std::toupper((unsigned char)b[i + k]) != kw[k]) { hit = false; break; }
+        if (!hit) continue;
+        if (i > 0 && (std::isalnum((unsigned char)b[i - 1]) || b[i - 1] == '_')) continue;
+        std::size_t after = i + n;
+        if (after < b.size() && (std::isalnum((unsigned char)b[after]) || b[after] == '_')) continue;
+        return i;
+    }
+    return std::string::npos;
+}
+
+// The identifier following a leading verb: OPEN <name>, CLOSE <name>,
+// FETCH <name> INTO …, DECLARE <name> CURSOR …
+std::string name_after_verb(const std::string &body, const char *verb) {
+    std::size_t p = find_kw(body, verb);
+    if (p == std::string::npos) return {};
+    p += std::strlen(verb);
+    while (p < body.size() && std::isspace((unsigned char)body[p])) ++p;
+    std::string id;
+    while (p < body.size() && (std::isalnum((unsigned char)body[p]) || body[p] == '_'))
+        id += body[p++];
+    return id;
+}
+
 const char *type_macro(unsigned t) {
     switch (t) {
         case 1: return "ESQLC_T_CHAR_FIXED";
@@ -160,6 +209,7 @@ std::string emit(const std::string &file, const ScanResult &sr,
 
     bool in_declare = false;
     int  hv_seq = 0;
+    std::map<std::string, CursorInfo> cursors;   // name -> declaration (T362)
     bool at_line_start = true;
 
     // A #line directive must begin a line — only whitespace may precede the #.
@@ -221,6 +271,136 @@ std::string emit(const std::string &file, const ScanResult &sr,
                            : k.keyword == "COMMIT WORK" ? "esqlc_txn_commit"
                                                         : "esqlc_txn_rollback";
             o << "do { " << fn << "(); sqlcode = esqlc_sqlcode(); } while (0);\n";
+            continue;
+        }
+
+        // ---- DECLARE <name> CURSOR FOR <select> (T362, T366, T368) ------
+        if (k.keyword == "DECLARE CURSOR") {
+            std::string cname = name_after_verb(k.body, "DECLARE");
+            if (cname.empty()) {
+                d.error("ESQLC-4005", k.pos, "cursor declaration has no name");
+                continue;
+            }
+            if (cursors.count(cname)) {
+                d.error("ESQLC-4006", k.pos,
+                        "cursor '" + cname + "' is already declared");
+                continue;
+            }
+            // FOR UPDATE is a clause of the cursor's statement, so the dispatch
+            // table cannot see it; refuse it here (read-only slice).
+            if (find_kw(k.body, "UPDATE") != std::string::npos) {
+                d.error("ESQLC-1012", k.pos,
+                        "FOR UPDATE cursors are not implemented in this slice; "
+                        "owned by feature 004 (static DML & cursors)");
+                continue;
+            }
+            std::size_t f = find_kw(k.body, "FOR");
+            if (f == std::string::npos) {
+                d.error("ESQLC-1009", k.pos,
+                        "cursor declaration has no FOR clause");
+                continue;
+            }
+            std::size_t sql_begin = f + 3;
+
+            CursorInfo ci;
+            ci.symbol = "__esqlc_cur_" + cname + "_sql";
+            // Everything after FOR is the statement; its references are inputs,
+            // placeholderised at the spans the lexer recorded.
+            std::string sql;
+            std::size_t i = sql_begin;
+            while (i < k.body.size()) {
+                bool sub = false;
+                for (const auto &ref : k.hostvars) {
+                    if (ref.begin == i && ref.begin >= sql_begin) {
+                        sql += '?';
+                        ci.inputs.push_back(ref.name);
+                        i = ref.end;
+                        sub = true;
+                        break;
+                    }
+                }
+                if (!sub) sql += k.body[i++];
+            }
+            sql = collapse_ws(sql);
+            ci.sql_len = sql.size();
+            cursors[cname] = ci;
+
+            // Emitted where the programmer wrote it. The cast-to-void self
+            // reference keeps a declared-but-never-opened cursor from drawing
+            // an unused-variable warning in a customer build (T368).
+            o << "static const char " << ci.symbol << "[] = "
+              << c_string_literal(sql) << ";\n";
+            o << "enum { " << ci.symbol << "_used = (int)sizeof " << ci.symbol << " };\n";
+            at_line_start = true;
+            continue;
+        }
+
+        // ---- OPEN / FETCH / CLOSE (T363, T364, T365) --------------------
+        if (k.keyword == "OPEN" || k.keyword == "FETCH" || k.keyword == "CLOSE") {
+            std::string cname = name_after_verb(k.body, k.keyword.c_str());
+            auto it = cursors.find(cname);
+            if (it == cursors.end()) {
+                d.error("ESQLC-4005", k.pos,
+                        "cursor '" + cname + "' is not declared");
+                continue;
+            }
+            const CursorInfo &ci = it->second;
+
+            if (k.keyword == "CLOSE") {
+                o << "do { esqlc_cursor_close(\"" << cname << "\");"
+                  << " sqlcode = esqlc_sqlcode(); } while (0);\n";
+                at_line_start = true;
+                continue;
+            }
+
+            // OPEN binds the cursor's recorded inputs; FETCH binds the
+            // references in its own INTO list as outputs.
+            std::vector<std::pair<std::string, bool>> binds;   // name, is_out
+            if (k.keyword == "OPEN") {
+                for (const auto &n : ci.inputs) binds.push_back({n, false});
+            } else {
+                if (k.into_off == Construct::npos) {
+                    d.error("ESQLC-1009", k.pos, "FETCH has no INTO clause");
+                    continue;
+                }
+                for (const auto &ref : k.hostvars)
+                    if (ref.begin >= k.into_off) binds.push_back({ref.name, true});
+            }
+
+            std::string arr = "__esqlc_hv_" + std::to_string(++hv_seq);
+            o << "do {\n";
+            bool bad = false;
+            if (binds.empty()) {
+                o << "  esqlc_hostvar_t *" << arr << " = 0;\n";
+            } else {
+                o << "  esqlc_hostvar_t " << arr << "[" << binds.size() << "] = {\n";
+                for (const auto &b : binds) {
+                    const HostVar *hv = find(vars, b.first);
+                    if (!hv) {
+                        d.error("ESQLC-1014", k.pos,
+                                "host variable ':" + b.first +
+                                "' is not declared in a declare section");
+                        bad = true;
+                        continue;
+                    }
+                    o << "    { &" << hv->name << ", 0, " << type_macro(hv->type)
+                      << ", " << hv->width << "u, " << hv->capacity << "u, 0, "
+                      << (hv->is_signed ? 1 : 0) << ", "
+                      << (b.second ? "ESQLC_DIR_OUT" : "ESQLC_DIR_IN") << ", 0 },\n";
+                }
+                o << "  };\n";
+            }
+            if (bad) { o << "} while (0);\n"; at_line_start = true; continue; }
+
+            if (k.keyword == "OPEN")
+                o << "  esqlc_cursor_open(\"" << cname << "\", " << ci.symbol
+                  << ", " << ci.sql_len << ", " << arr << ", " << binds.size() << ");\n";
+            else
+                o << "  esqlc_cursor_fetch(\"" << cname << "\", " << arr
+                  << ", " << binds.size() << ");\n";
+            o << "  sqlcode = esqlc_sqlcode();\n";
+            o << "} while (0);\n";
+            at_line_start = true;
             continue;
         }
 

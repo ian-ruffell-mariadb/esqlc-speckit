@@ -17,6 +17,78 @@ feature 004.
 testing. T311 exists to keep a live `ESQLC-1012` case once four more verbs
 become implemented.
 
+---
+
+## Implementation status — 2026-08-29
+
+**Gate 3 is green end to end.** Branch `gate-3-implementation`.
+`ctest` 8/8 with a server, 7/7 under `-DESQLC_NO_MARIADB=ON`; Tier 2 19/19;
+negatives 11/11; diagnostic registry clean at 26 codes.
+
+**Principle IV honoured.** Phase B failures were captured before any Phase C
+work: four preprocessor negatives failing (the Q9 defect visible live as
+`ESQLC-1009 unrecognised 'DECLARE'` in three of them) and six Tier 2 cursor
+cases failing to build, with Gates 1 and 2's thirteen still passing.
+
+### Mutation checks
+
+| Check | Result |
+|---|---|
+| T350 stale parameter snapshot | failed `open_binds` **only** |
+| T351 success instead of 100 when exhausted | failed `fetch_exhausted` **only** |
+| T352 null-terminate the fetch buffer | failed `cursor_loop` **only** |
+| T353 break the cursor type | failed `streaming_guard` — **and one functional test**, see below |
+
+### Two defects in my own verification
+
+Both worth recording, because a guard that cannot fail is worse than no guard.
+
+1. **A mutation that did not mutate.** The first T353 attempt used `perl` without
+   `/g`, so it replaced the *comment* mention of `STMT_ATTR_CURSOR_TYPE` and left
+   the actual call untouched. The guard "passed" against unmutated code.
+2. **A guard that grepped comments.** `streaming_guard` searched the whole file,
+   so a comment mention satisfied it. Hardened to strip comments and to require
+   the `mysql_stmt_attr_set` call itself. This is the same defect as Gate 2's
+   FR-003.1 check matching identifiers inside comments — third occurrence of
+   that pattern.
+
+### T353's prediction was too strong
+
+The plan asserted the streaming defect is invisible to every functional test,
+which is why `streaming_guard` is structural. Switching the cursor type to
+`CURSOR_TYPE_NO_CURSOR` failed the guard **and** one functional test. So the
+attribute is not entirely invisible for that particular mutation. Whether plain
+removal of the call is invisible was not characterised — recorded as observed
+rather than tidied into agreement with the plan.
+
+### The registry caught an orphan, automatically
+
+`ESQLC-4010` (cursor type refused) was invented during implementation and
+registered in no spec. `diag_registry` — added after Gate 1, where two orphans
+were found only by an ad-hoc audit — failed the build and named it. **First time
+an orphan diagnostic was caught by a guard rather than by remembering to look.**
+
+### Third occurrence of a familiar pattern
+
+Implementing `FETCH` silently changed what Gate 2's `unimplemented_cursor.sqlc`
+was testing: it began asserting `ESQLC-4005` instead of `ESQLC-1012`. Retired in
+favour of T310's `unimplemented_for_update.sqlc`, which was created for exactly
+this. Gate 1 → Gate 2 → Gate 3, the same lesson each time: a negative fixture
+pinned to "not implemented yet" expires the moment the thing is implemented.
+
+### Deviations
+
+- **T303 reframed during implementation.** The task described binding "at
+  DECLARE rather than OPEN", but `DECLARE CURSOR` is a declaration with no
+  runtime moment, so capturing a variable's value there is not expressible in C.
+  The real risk is a runtime caching bound values across opens, which is what
+  the fixture now pins by opening twice with different values.
+- **T341 folded into `cursor_loop`** rather than a separate fixture: the loop
+  poisons before every fetch and asserts the terminator byte survived each one,
+  which is stronger than a single-fetch check would have been.
+
+---
+
 ## Phase A — fixtures and harness
 
 | ID | Task | Reqs | Deps |

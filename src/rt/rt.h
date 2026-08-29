@@ -42,6 +42,9 @@ void esqlc_rt_set_err_from_mysql(MYSQL *m);
 void esqlc_rt_set_err_from_stmt(MYSQL_STMT *s);
 void esqlc_rt_set_err_code(long code);
 
+/* cursor.c */
+void esqlc_rt_cursors_release_all(void);   /* FR-003.8 */
+
 /* session.c */
 int  esqlc_rt_check_thread(void);     /* 0 ok, non-zero refused */
 int  esqlc_rt_ensure(void);           /* thread check + resolve + connect */

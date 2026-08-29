@@ -1,0 +1,31 @@
+/* T302 — SD-3. After a FETCH returns 100 the cursor stays at end of set:
+   a second fetch also returns 100 and still writes nothing (FR-004.14). */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short min_num; short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+EXEC SQL DECLARE excur CURSOR FOR
+         SELECT part_num, part_desc FROM parts
+          WHERE part_num >= :min_num ORDER BY part_num;
+int main(void) {
+  int i, intact = 1; long first_end, second_end;
+  min_num = 4106;                      /* exactly one row */
+  EXEC SQL BEGIN WORK;
+  EXEC SQL OPEN excur;
+  EXEC SQL FETCH excur INTO :part_num, :part_desc;   /* the one row */
+  if (sqlcode != 0) { printf("row fetch failed %ld\n", sqlcode); return 1; }
+  memset(part_desc, 0xAA, sizeof part_desc); part_num = -31000;
+  EXEC SQL FETCH excur INTO :part_num, :part_desc;   /* past the end */
+  first_end = sqlcode;
+  EXEC SQL FETCH excur INTO :part_num, :part_desc;   /* again */
+  second_end = sqlcode;
+  for (i = 0; i < 19; ++i) if ((unsigned char)part_desc[i] != 0xAA) intact = 0;
+  if (part_num != -31000) intact = 0;
+  EXEC SQL CLOSE excur;
+  EXEC SQL COMMIT WORK;
+  printf("first=%ld second=%ld intact=%d\n", first_end, second_end, intact);
+  return (first_end == 100 && second_end == 100 && intact) ? 0 : 1;
+}

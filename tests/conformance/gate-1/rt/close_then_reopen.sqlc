@@ -1,0 +1,30 @@
+/* T304 — FR-004.15: CLOSE releases the result set; a later OPEN re-runs the
+   statement and the set is readable in full again. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short min_num; short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+EXEC SQL DECLARE recur CURSOR FOR
+         SELECT part_num, part_desc FROM parts
+          WHERE part_num >= :min_num ORDER BY part_num;
+static int drain(void) {
+  int n = 0;
+  EXEC SQL OPEN recur;
+  for (;;) { EXEC SQL FETCH recur INTO :part_num, :part_desc;
+             if (sqlcode == 100) break;
+             if (sqlcode != 0) return -1;
+             ++n; }
+  EXEC SQL CLOSE recur;
+  return n;
+}
+int main(void) {
+  int a, b;
+  min_num = 4104;
+  EXEC SQL BEGIN WORK;
+  a = drain(); b = drain();
+  EXEC SQL COMMIT WORK;
+  printf("first=%d second=%d\n", a, b);
+  return (a == 3 && b == 3) ? 0 : 1;
+}

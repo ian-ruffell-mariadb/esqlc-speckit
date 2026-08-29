@@ -80,6 +80,16 @@ int  esqlc_txn_rollback(void);
 int  esqlc_stmt_exec(const char *body, size_t body_len,
                      const esqlc_hostvar_t *vars, int var_count);
 
+/* Cursors (Gate 3). A cursor is long-lived state spanning three statements,
+ * which one-shot esqlc_stmt_exec cannot express. Identified by name; see the
+ * contract's note that this pre-judges 004 Q5 (unit vs function scope). */
+int  esqlc_cursor_open(const char *name,
+                       const char *sql, size_t sql_len,
+                       const esqlc_hostvar_t *vars, int var_count);
+int  esqlc_cursor_fetch(const char *name,
+                        const esqlc_hostvar_t *vars, int var_count);
+int  esqlc_cursor_close(const char *name);
+
 long esqlc_sqlcode(void);
 int  esqlc_fs_detail(long *fs_code);
 

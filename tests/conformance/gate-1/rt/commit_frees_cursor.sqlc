@@ -1,0 +1,24 @@
+/* T305 — FR-003.8: COMMIT WORK frees resources including open cursors, so a
+   fetch afterwards must be an error rather than a stale row. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short min_num; short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+EXEC SQL DECLARE freecur CURSOR FOR
+         SELECT part_num, part_desc FROM parts
+          WHERE part_num >= :min_num ORDER BY part_num;
+int main(void) {
+  long after;
+  min_num = 4104;
+  EXEC SQL BEGIN WORK;
+  EXEC SQL OPEN freecur;
+  EXEC SQL FETCH freecur INTO :part_num, :part_desc;
+  if (sqlcode != 0) { printf("first fetch failed %ld\n", sqlcode); return 1; }
+  EXEC SQL COMMIT WORK;                       /* cursor still open */
+  EXEC SQL FETCH freecur INTO :part_num, :part_desc;
+  after = sqlcode;
+  printf("after_commit_fetch=%ld\n", after);
+  return after < 0 ? 0 : 1;                   /* must be an error */
+}

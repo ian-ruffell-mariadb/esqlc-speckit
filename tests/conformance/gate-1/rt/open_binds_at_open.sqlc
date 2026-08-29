@@ -1,0 +1,37 @@
+/* T303 — FR-004.12: OPEN runs the statement, so it reads the CURRENT value of
+   the input host variable.
+   Reframed during implementation. The task described "bind at DECLARE rather
+   than OPEN", but DECLARE CURSOR is a declaration with no runtime moment, so
+   capturing a variable's value there is not expressible in C. The real risk is
+   a runtime that caches bound parameter values across opens: the second OPEN
+   would then silently reuse the first one's value. That is what this pins. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short min_num; short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+EXEC SQL DECLARE bindcur CURSOR FOR
+         SELECT part_num, part_desc FROM parts
+          WHERE part_num >= :min_num ORDER BY part_num;
+static int count_rows(void) {
+  int n = 0;
+  EXEC SQL OPEN bindcur;
+  for (;;) {
+    EXEC SQL FETCH bindcur INTO :part_num, :part_desc;
+    if (sqlcode == 100) break;
+    if (sqlcode != 0) return -1;
+    ++n;
+  }
+  EXEC SQL CLOSE bindcur;
+  return n;
+}
+int main(void) {
+  int a, b;
+  EXEC SQL BEGIN WORK;
+  min_num = 4105; a = count_rows();     /* expect 2: 4105, 4106 */
+  min_num = 4103; b = count_rows();     /* expect 4: 4103..4106 */
+  EXEC SQL COMMIT WORK;
+  printf("first=%d second=%d\n", a, b);
+  return (a == 2 && b == 4) ? 0 : 1;
+}

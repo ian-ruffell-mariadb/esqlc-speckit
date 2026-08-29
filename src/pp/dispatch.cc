@@ -18,14 +18,17 @@ static const Handler kHandlers[] = {
     {"ROLLBACK WORK",         PosClass::Exec, nullptr},
     {"INSERT",                PosClass::Exec, nullptr},
     {"SELECT",                PosClass::Exec, nullptr},   // Gate 2: single-row only
+    {"DECLARE CURSOR",        PosClass::Decl, nullptr},   // Gate 3: read-only
+    {"OPEN",                  PosClass::Exec, nullptr},
+    {"FETCH",                 PosClass::Exec, nullptr},
+    {"CLOSE",                 PosClass::Exec, nullptr},
 
     // --- recognised, deliberately unimplemented -------------------------
+    // FOR UPDATE is refused inside the DECLARE CURSOR handler rather than
+    // here: it is a clause of the cursor's statement, not a keyword of its
+    // own, so the dispatch table cannot see it.
     {"UPDATE",             PosClass::Exec, "004 (static DML & cursors)"},
     {"DELETE",             PosClass::Exec, "004 (static DML & cursors)"},
-    {"DECLARE CURSOR",     PosClass::Decl, "004 (static DML & cursors)"},
-    {"OPEN",               PosClass::Exec, "004 (static DML & cursors)"},
-    {"FETCH",              PosClass::Exec, "004 (static DML & cursors)"},
-    {"CLOSE",              PosClass::Exec, "004 (static DML & cursors)"},
     {"WHENEVER",           PosClass::Decl, "005 (diagnostics)"},
     {"INCLUDE STRUCTURES", PosClass::Decl, "005 (diagnostics)"},
     {"INCLUDE SQLCA",      PosClass::Decl, "005 (diagnostics)"},

@@ -170,5 +170,33 @@ seed
 run_case cross_family "$RT/negative/cross_family.sqlc" 0 && \
   ok "cross_family refused (FR-002.22)"
 
+# =====================================================================
+# Gate 3 — read-only cursors. Each case re-seeds; the seed gives 4102
+# through 4106 so a cursor has a range to walk.
+# =====================================================================
+seed
+run_case cursor_loop "$RT/cursor_loop.sqlc" 0 && \
+  ok "cursor_loop: 3 rows in ORDER BY order, terminator intact (FR-004.13, FR-004.16, FR-002.28)"
+
+seed
+run_case fetch_exhausted "$RT/fetch_exhausted.sqlc" 0 && \
+  ok "fetch_exhausted: 100 twice, host variables untouched (FR-004.14, SD-3)"
+
+seed
+run_case open_binds "$RT/open_binds_at_open.sqlc" 0 && \
+  ok "open_binds_at_open: OPEN reads the current value (FR-004.12)"
+
+seed
+run_case close_reopen "$RT/close_then_reopen.sqlc" 0 && \
+  ok "close_then_reopen: full set both times (FR-004.15)"
+
+seed
+run_case commit_frees "$RT/commit_frees_cursor.sqlc" 0 && \
+  ok "commit_frees_cursor: fetch after commit errors (FR-003.8)"
+
+seed
+run_case cursor_order "$RT/negative/cursor_order.sqlc" 0 && \
+  ok "cursor_order: all three out-of-order operations refused (FR-004.19)"
+
 echo "tier2: $pass passed, $fail failed"
 exit $(( fail > 0 ))
