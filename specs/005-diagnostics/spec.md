@@ -185,6 +185,8 @@ present so a debugging build can surface it.
 | Q6 | What does the SQL message file become — a bundled message catalogue, or MariaDB's own messages? Affects `SQLCADISPLAY` output text. | FR-005.28, .32 | unresolved |
 | Q7 | Item code 22 reports errors positive and warnings negative, inverting `sqlcode`. Is that inversion faithful to reproduce, or a manual defect? | FR-005.30 | unresolved — reproduce as published pending evidence, and pin it with a test in both directions |
 | Q8 | Who declares `sqlcode` — the program, or the preprocessor? §10 p.10-23 lists "declare the sqlcode variable" as a program development step, implying the program owns it; §9 discusses checking it without ever saying who declares it. Its type is also unstated. | FR-005.1 | unresolved — narrowed for Gate 1 by a slice decision (program-declared `long`) |
+| Q9 | Does `WHENEVER` apply to transaction control statements? §9 p.9-6 says "subsequent DML, DCL, and DDL statements", and §3's inventory lists transaction control as a **separate** class from all three. So `BEGIN`/`COMMIT`/`ROLLBACK WORK` are either deliberately excluded or accidentally omitted, and the manual does not distinguish. | FR-005.7 | unresolved — narrowed for Gate 4 by slice decision SD-5 |
+| Q10 | What signature does a `CALL` handler have? The grammar is `CALL :host-identifier` and every example passes a bare name, but no parameter list or return type is stated anywhere in §9. | FR-005.4 | unresolved — narrowed for Gate 4 by slice decision SD-6 |
 
 Q1 and Q2 are closed, and the earlier assessment that "the structures cannot be
 implemented byte-exactly from the manual alone" was wrong for SQLSA: the layouts

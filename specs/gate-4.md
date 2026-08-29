@@ -1,6 +1,7 @@
 # Gate 4: WHENEVER and the SQLCA
 
-**Status:** Ready to plan · **Specs:** 001, 002, 003, 004, 005 (scoped)
+**Status:** Planned · **Plan:** [gate-4-plan.md](gate-4-plan.md)
+**Specs:** 001, 002, 003, 004, 005 (scoped)
 **Depends on:** Gate 3 (merged, green, CI-enforced) · **Blocks:** the rest of §9, then Phase 3
 
 Gates 1–3 proved data moves correctly. Gate 4 proves a program can *find out what
@@ -67,7 +68,9 @@ int main(void)
 
 done:
   ++notfounds;
-  EXEC SQL WHENEVER SQLERROR CONTINUE;   /* disable before cleanup */
+  EXEC SQL WHENEVER SQLERROR CONTINUE;   /* proves CONTINUE disables (criterion 3);
+                                            under SD-5 the COMMIT below was never
+                                            guarded in the first place */
   EXEC SQL COMMIT WORK;
   printf("errors=%d notfounds=%d\n", errors, notfounds);
   return 0;
@@ -116,6 +119,16 @@ cursors). One new decision.
   it reads as deliberate rather than as a typo — but it is odd enough to be worth
   re-checking against `SQLRM`. **Provisional.** A test pins it in both
   directions so that a later reversal is a visible change, not a silent one.
+- **SD-5 (new)** — `WHENEVER` does **not** apply to `BEGIN`/`COMMIT`/`ROLLBACK
+  WORK`. Narrows 005 Q9 only. Chosen because §9 names three statement classes and
+  §3 lists transaction control as a fourth, so the exclusion reads as deliberate;
+  and because the safer error is a handler that fires too rarely rather than one
+  that fires on a commit the program did not expect to be guarded.
+  **Provisional** — the list may simply be incomplete.
+- **SD-6 (new)** — a `CALL` handler is `void (*)(void)`. Narrows 005 Q10 only.
+  Chosen because every example in §9 passes a bare identifier with no arguments,
+  and because a handler needing state can read `sqlcode`, which is in scope by
+  construction. **Provisional** — the manual states no signature at all.
 
 ## Open-question avoidance
 
@@ -147,6 +160,8 @@ Every open question in the five specs this slice touches.
 | **005 Q6 SQL message file** | **no, by exclusion** | `SQLCADISPLAY` and `SQLCATOBUFFER` render messages and are deliberately out of scope. Only the non-rendering accessors are included |
 | **005 Q7 item-22 sign inversion** | **yes** | `SQLCAGETINFOLIST` item 22 is in scope. Narrowed by **SD-4** |
 | **005 Q8 who declares `sqlcode`** | **yes** | the fixtures reference it. Carried decision **SD-2** |
+| **005 Q9 `WHENEVER` and transaction control** | **yes** | the fixtures wrap statements in `BEGIN`/`COMMIT WORK` while a handler is active, so the question cannot be dodged. Narrowed by **SD-5** |
+| **005 Q10 `CALL` handler signature** | **yes** | the slice emits a call to one. Narrowed by **SD-6** |
 
 ## Design questions this slice must settle
 
