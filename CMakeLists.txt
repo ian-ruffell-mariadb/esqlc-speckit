@@ -56,6 +56,7 @@ if(MARIADB_CONFIG)
         src/rt/session.c
         src/rt/txn.c
         src/rt/exec.c
+        src/rt/cursor.c
         src/rt/diag.c
     )
     target_include_directories(esqlc PUBLIC include PRIVATE src/rt)
@@ -92,6 +93,11 @@ add_test(NAME spec_assertions
 # slipped through Gate 1 unregistered; this makes the check structural.
 add_test(NAME diag_registry
          COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/diag_registry.sh)
+
+# The streaming attribute has no reliable functional symptom at fixture scale,
+# so it is guarded structurally (Gate 3, T347).
+add_test(NAME streaming_guard
+         COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/streaming_guard.sh)
 
 # Tier 2 needs a live server. It skips rather than fails when none is
 # reachable, so NFR-001.2 (Tier 1 runs with no MariaDB) still holds.

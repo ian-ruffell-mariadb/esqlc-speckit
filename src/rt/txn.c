@@ -42,6 +42,9 @@ int esqlc_txn_commit(void) {
         esqlc_rt_set_err_from_mysql(s->conn);
         return -1;
     }
+    /* FR-003.8: commit frees resources held by the transaction, cursors
+       included. A fetch afterwards must error rather than return a stale row. */
+    esqlc_rt_cursors_release_all();
     s->in_txn = false;
     esqlc_rt_set_ok();
     return 0;
@@ -59,6 +62,7 @@ int esqlc_txn_rollback(void) {
         esqlc_rt_set_err_from_mysql(s->conn);
         return -1;
     }
+    esqlc_rt_cursors_release_all();      /* FR-003.8 */
     s->in_txn = false;
     esqlc_rt_set_ok();
     return 0;

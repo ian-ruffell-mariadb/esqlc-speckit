@@ -64,6 +64,22 @@ std::string leading_keyword(const std::string &body) {
         }
     }
     while (!norm.empty() && norm.front() == ' ') norm.erase(norm.begin());
+
+    // T360 / 004 Q9 — the cursor name sits BETWEEN the two keywords:
+    //   DECLARE <cursor-name> CURSOR FOR <select>
+    // so the fixed multi-word matcher below can never fire and its
+    // "DECLARE CURSOR" entry was dead code. Gate 2 found this; the repair
+    // belongs here because Gate 3's entry point is that statement.
+    //
+    // CURSOR must appear before FOR, not merely somewhere, so a statement that
+    // happens to contain the word later cannot be dragged into this branch.
+    if (norm.compare(0, 8, "DECLARE ") == 0) {
+        std::size_t cur = norm.find(" CURSOR");
+        std::size_t f   = norm.find(" FOR");
+        if (cur != std::string::npos && (f == std::string::npos || cur < f))
+            return "DECLARE CURSOR";
+    }
+
     for (int m = 0; multi[m]; ++m) {
         std::size_t L = std::strlen(multi[m]);
         if (norm.compare(0, L, multi[m]) == 0 &&

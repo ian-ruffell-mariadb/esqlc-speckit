@@ -1,0 +1,40 @@
+/* T301 — the shape every real program uses.
+   ORDER BY is not decoration: FR-004.16b makes row order undefined without it,
+   so asserting an order without one asserts unspecified behaviour.
+   part_desc is poisoned before every fetch, not just the last, so a stray
+   terminator on any iteration is caught (FR-002.28). */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short min_num;
+  short part_num;
+  char  part_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+EXEC SQL DECLARE partcur CURSOR FOR
+         SELECT part_num, part_desc
+           FROM parts
+          WHERE part_num >= :min_num
+          ORDER BY part_num;
+
+int main(void) {
+  int rows = 0, term_ok = 1;
+  min_num = 4104;
+  EXEC SQL BEGIN WORK;
+  EXEC SQL OPEN partcur;
+  for (;;) {
+    memset(part_desc, 0xAA, sizeof part_desc);
+    EXEC SQL FETCH partcur INTO :part_num, :part_desc;
+    if (sqlcode == 100) break;
+    if (sqlcode != 0) { printf("fetch failed %ld\n", sqlcode); return 1; }
+    if ((unsigned char)part_desc[18] != 0xAA) term_ok = 0;
+    printf("%d|%.18s\n", part_num, part_desc);
+    ++rows;
+  }
+  EXEC SQL CLOSE partcur;
+  EXEC SQL COMMIT WORK;
+  printf("rows=%d term_ok=%d\n", rows, term_ok);
+  return (rows == 3 && term_ok) ? 0 : 1;
+}

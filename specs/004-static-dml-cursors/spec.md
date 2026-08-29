@@ -124,6 +124,7 @@ correct-looking code.
 | `ESQLC-4007` | Single-row `SELECT` matched multiple rows | error | `[EXTERNAL — SQLRM]` |
 | `ESQLC-4008` | Host variable list length does not match the select list | error | Principle III |
 | `ESQLC-4009` | Null retrieved into a host variable with no indicator | error | `[§9 p.9-6]` (cf. SQL error 8423) |
+| `ESQLC-4010` | Server or client refused a read-only cursor, so the result set would be buffered rather than streamed | error | `[§4 p.4-17]`, Constitution III — silently buffering a large result set is a behaviour change with no symptom until it is a memory event |
 
 `ESQLC-4009` mirrors SQL error 8423, which the manual cites as a case where
 SQL/MP returns something other than 100 for a not-found-like condition. Reuse the
@@ -141,7 +142,7 @@ SQL/MP returns something other than 100 for a not-found-like condition. Reuse th
 | Q6 | Where does the cursor sit after a `FETCH` past the last row? Table 4-2 does not say, and FR-004.14 currently asserts an answer the manual does not give. | FR-004.14 | unresolved — `[EXTERNAL — SQLRM]`. Must become a documented choice or a divergence |
 | Q7 | Where does the cursor sit after a positioned `UPDATE`? Table 4-2 omits `UPDATE` entirely, yet AS-004.3 asserts the row stays current and the next `FETCH` advances. | FR-004.17 | unresolved — `[EXTERNAL — SQLRM]`. Same treatment as Q6 |
 | Q8 | Cursor PAID rules are finer than assumed: read access is tested on the objects in the cursor's `SELECT` at `OPEN`, write access only on `DELETE`, and a cursor without `FOR UPDATE` may still locate rows to delete. Does `IN EXCLUSIVE MODE` need modelling? | FR-004.20, 008 FR-008.14 | unresolved — `[SQLPM/C §4 p.4-16]` |
-| Q9 | **Defect found by Gate 2, not yet fixed.** The preprocessor's dispatch table carries a `DECLARE CURSOR` keyword entry, but real syntax is `DECLARE <cursor-name> CURSOR FOR …` with the name *between* the two words. The multi-word matcher therefore never fires and the entry is dead code: a real `DECLARE … CURSOR` currently yields `ESQLC-1009` (unrecognised keyword `DECLARE`) instead of `ESQLC-1012` naming this feature. Keyword matching needs to tolerate an embedded identifier. | FR-004.11, 001 FR-001.15 | unresolved — noted rather than fixed, since cursor syntax is this feature's to own. Gate 2's T207 fixture uses `FETCH` to keep a live 1012 case meanwhile |
+| Q9 | **Defect found by Gate 2, not yet fixed.** The preprocessor's dispatch table carries a `DECLARE CURSOR` keyword entry, but real syntax is `DECLARE <cursor-name> CURSOR FOR …` with the name *between* the two words. The multi-word matcher therefore never fires and the entry is dead code: a real `DECLARE … CURSOR` currently yields `ESQLC-1009` (unrecognised keyword `DECLARE`) instead of `ESQLC-1012` naming this feature. Keyword matching needs to tolerate an embedded identifier. | FR-004.11, 001 FR-001.15 | **RESOLVED by repair, Gate 3 T360.** `leading_keyword` now recognises a body beginning `DECLARE` whose `CURSOR` precedes its `FOR`, whatever identifier sits between the two words. Closed rather than narrowed — this was a defect, not an ambiguity |
 
 Q1 is not really a question — it is a task. It sits here because the position
 table is the single highest-risk item in this feature and must not be

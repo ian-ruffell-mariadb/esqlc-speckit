@@ -1,0 +1,27 @@
+/* T306 — FR-004.19: operating on a cursor out of order is an error, not
+   undefined behaviour. Three cases, each with a distinguishable outcome. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short min_num; short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+EXEC SQL DECLARE ordcur CURSOR FOR
+         SELECT part_num, part_desc FROM parts
+          WHERE part_num >= :min_num ORDER BY part_num;
+int main(void) {
+  long a, b, c;
+  min_num = 4104;
+  EXEC SQL BEGIN WORK;
+  EXEC SQL FETCH ordcur INTO :part_num, :part_desc;   /* before OPEN */
+  a = sqlcode;
+  EXEC SQL OPEN ordcur;
+  EXEC SQL OPEN ordcur;                                /* already open */
+  b = sqlcode;
+  EXEC SQL CLOSE ordcur;
+  EXEC SQL CLOSE ordcur;                               /* not open */
+  c = sqlcode;
+  EXEC SQL ROLLBACK WORK;
+  printf("fetch_unopened=%ld double_open=%ld close_unopened=%ld\n", a, b, c);
+  return (a < 0 && b < 0 && c < 0) ? 0 : 1;
+}
