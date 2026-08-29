@@ -1,6 +1,7 @@
 # Gate 4: WHENEVER and the SQLCA
 
-**Status:** Planned · **Plan:** [gate-4-plan.md](gate-4-plan.md)
+**Status:** Tasked · **Plan:** [gate-4-plan.md](gate-4-plan.md) ·
+**Tasks:** [gate-4-tasks.md](gate-4-tasks.md)
 **Specs:** 001, 002, 003, 004, 005 (scoped)
 **Depends on:** Gate 3 (merged, green, CI-enforced) · **Blocks:** the rest of §9, then Phase 3
 
@@ -188,12 +189,16 @@ but the total is load-bearing, because programs allocate extra copies with
 ## Scoped requirement set
 
 **001:** FR-001.13, FR-001.15, FR-001.22; NFR-001.1
-**002:** FR-002.28
 **003:** FR-003.1, FR-003.2, FR-003.3
 **005:** FR-005.1, FR-005.3, FR-005.4, FR-005.5, FR-005.6, FR-005.7,
 FR-005.10, FR-005.14, FR-005.14a, FR-005.15, FR-005.23b, FR-005.30, FR-005.31
 
 Plus diagnostics `ESQLC-5001`, `ESQLC-5006`, `ESQLC-5008`.
+
+Not listed, deliberately: **FR-002.28** (no terminator appended on retrieval).
+Gate 2 implements it and Gate 4 changes nothing about the retrieval path, so it
+can only be regression coverage here — it would have a Phase B test and no
+honest Phase C task. Gate 2's fixtures continue to cover it.
 
 Deliberately absent: all of `SQLSA` and `SQLDA`; `SQLCADISPLAY` and
 `SQLCATOBUFFER` (message rendering); the full `INCLUDE STRUCTURES` version matrix

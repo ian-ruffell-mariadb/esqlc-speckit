@@ -107,7 +107,6 @@ layout change cannot desynchronise the two halves.
 | FR-001.15 dispatch; unimplemented refused | dispatch | `negative/unimplemented_sqlsa` |
 | FR-001.22 scope state exposed | whenever | `whenever_scope` |
 | NFR-001.1 opaque bodies | emit | `opaque_body_unchanged` |
-| FR-002.28 no terminator appended | rt/sqlca | `rt/whenever_flow` |
 | FR-003.1 `esqlc_*` calls only | emit | `abi_only_symbols` |
 | FR-003.2 no MariaDB type in the header | include/esqlc.h | `abi_isolation` |
 | FR-003.3 signatures mirrored in the contract | contract | `contract_sync` |
@@ -125,7 +124,10 @@ layout change cannot desynchronise the two halves.
 | FR-005.30 `SQLCAGETINFOLIST` subset and error codes | rt/sqlca | `rt/sqlca_items`, `rt/negative/sqlca_misuse` |
 | FR-005.31 `SQLCAFSCODE` detail | rt/diag | `rt/sqlca_fscode` |
 
-21 scoped requirements, all mapped exactly once.
+20 scoped requirements, all mapped exactly once. FR-002.28 was dropped from
+the slice during task derivation: Gate 2 implements it and this slice changes
+nothing about retrieval, so it could only have had a regression test and no
+honest Phase C task.
 
 ## 7. Test strategy
 
