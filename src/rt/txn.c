@@ -10,6 +10,13 @@
 #include <stdio.h>
 
 int esqlc_txn_begin(void) {
+    /* FR-005.19: transaction control leaves the SQLSA undefined, and must not
+     * leave it accidentally meaningful. Reset with no populate is exactly
+     * that — every field reads its sentinel, so a program that reads here gets
+     * a detectable "not measured" rather than the previous statement's
+     * plausible-looking numbers. No separate code path; the absence of a
+     * populate call *is* the behaviour. */
+    esqlc_rt_sqlsa_reset();
     esqlc_state_t *s = esqlc_rt_state();
     if (esqlc_rt_ensure() != 0) return -1;
 
@@ -31,6 +38,13 @@ int esqlc_txn_begin(void) {
 }
 
 int esqlc_txn_commit(void) {
+    /* FR-005.19: transaction control leaves the SQLSA undefined, and must not
+     * leave it accidentally meaningful. Reset with no populate is exactly
+     * that — every field reads its sentinel, so a program that reads here gets
+     * a detectable "not measured" rather than the previous statement's
+     * plausible-looking numbers. No separate code path; the absence of a
+     * populate call *is* the behaviour. */
+    esqlc_rt_sqlsa_reset();
     esqlc_state_t *s = esqlc_rt_state();
     if (esqlc_rt_ensure() != 0) return -1;
     if (!s->in_txn) {
@@ -51,6 +65,13 @@ int esqlc_txn_commit(void) {
 }
 
 int esqlc_txn_rollback(void) {
+    /* FR-005.19: transaction control leaves the SQLSA undefined, and must not
+     * leave it accidentally meaningful. Reset with no populate is exactly
+     * that — every field reads its sentinel, so a program that reads here gets
+     * a detectable "not measured" rather than the previous statement's
+     * plausible-looking numbers. No separate code path; the absence of a
+     * populate call *is* the behaviour. */
+    esqlc_rt_sqlsa_reset();
     esqlc_state_t *s = esqlc_rt_state();
     if (esqlc_rt_ensure() != 0) return -1;
     if (!s->in_txn) {

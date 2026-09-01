@@ -58,6 +58,9 @@ static int bind_input(MYSQL_BIND *b, unsigned long *len,
 int esqlc_stmt_exec(const char *body, size_t body_len,
                     const esqlc_hostvar_t *vars, int var_count) {
     esqlc_state_t *s = esqlc_rt_state();
+    /* FR-005.20: every statement resets the SQLSA, first, so a statement that
+     * fails leaves sentinels rather than the previous statement's numbers. */
+    esqlc_rt_sqlsa_reset();
     if (esqlc_rt_ensure() != 0) return -1;
     if (!body) { esqlc_rt_set_err_code(-3004); return -1; }
     if (var_count < 0) var_count = 0;
@@ -178,8 +181,12 @@ int esqlc_stmt_exec(const char *body, size_t body_len,
     }
 
     if (n_out == 0) {
-        if (mysql_stmt_affected_rows(st) == 0) esqlc_rt_set_notfound();
-        else                                   esqlc_rt_set_ok();
+        my_ulonglong aff = mysql_stmt_affected_rows(st);
+        /* DML has no result-set metadata, so table_name keeps SD-8's character
+         * sentinel; records_used is the one counter with an honest analogue. */
+        esqlc_rt_sqlsa_from_stmt(st, (long)(aff == (my_ulonglong)-1 ? 0 : aff));
+        if (aff == 0) esqlc_rt_set_notfound();
+        else          esqlc_rt_set_ok();
         goto done;
     }
 
@@ -211,6 +218,7 @@ int esqlc_stmt_exec(const char *body, size_t body_len,
                 *outv[j]->ind_addr = 0;
             }
         }
+        esqlc_rt_sqlsa_from_stmt(st, 1);   /* one row retrieved */
         esqlc_rt_set_ok();
     }
 

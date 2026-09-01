@@ -10,10 +10,12 @@ EXEC SQL BEGIN DECLARE SECTION;
   short part_num; char part_desc[19];
 EXEC SQL END DECLARE SECTION;
 
+/* Declaration position: a cursor DECLARE is a declaration. */
+EXEC SQL DECLARE c1 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
+
 int main(void) {
   int rows = 0;
   EXEC SQL BEGIN WORK;
-  EXEC SQL DECLARE c1 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
   EXEC SQL OPEN c1;
   if (sqlcode < 0) { printf("FAIL: open sqlcode=%ld\n", sqlcode); return 1; }
   /* After OPEN the statement has run, so the table is named. */

@@ -11,9 +11,11 @@ EXEC SQL BEGIN DECLARE SECTION;
   short part_num; char part_desc[19];
 EXEC SQL END DECLARE SECTION;
 
+/* Declaration position: a cursor DECLARE is a declaration. */
+EXEC SQL DECLARE c5 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
+
 int main(void) {
   EXEC SQL BEGIN WORK;
-  EXEC SQL DECLARE c5 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
   EXEC SQL OPEN c5;
   EXEC SQL FETCH c5 INTO :part_num, :part_desc;
   if (sqlcode < 0) { printf("FAIL: fetch sqlcode=%ld\n", sqlcode); return 1; }

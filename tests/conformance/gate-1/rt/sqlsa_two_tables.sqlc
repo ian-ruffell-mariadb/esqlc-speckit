@@ -16,13 +16,15 @@ static int names_cover(const char *a, const char *b) {
       || (strncmp(a, "suppliers", 9) == 0 && strncmp(b, "parts", 5) == 0);
 }
 
+/* Declaration position: a cursor DECLARE is a declaration. */
+EXEC SQL DECLARE c3 CURSOR FOR
+SELECT p.part_num, p.part_desc, s.supp_name
+FROM parts p JOIN suppliers s ON p.part_num = s.part_num
+ORDER BY p.part_num;
+
 int main(void) {
   int rows = 0, seen2 = 0;
   EXEC SQL BEGIN WORK;
-  EXEC SQL DECLARE c3 CURSOR FOR
-      SELECT p.part_num, p.part_desc, s.supp_name
-      FROM parts p JOIN suppliers s ON p.part_num = s.part_num
-      ORDER BY p.part_num;
   EXEC SQL OPEN c3;
   for (;;) {
     EXEC SQL FETCH c3 INTO :part_num, :part_desc, :supp_name;

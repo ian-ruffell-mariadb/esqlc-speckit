@@ -74,6 +74,9 @@ void esqlc_rt_cursors_release_all(void) {
 int esqlc_cursor_open(const char *name, const char *sql, size_t sql_len,
                       const esqlc_hostvar_t *vars, int var_count) {
     esqlc_state_t *s = esqlc_rt_state();
+    /* FR-005.20: every statement resets the SQLSA. Done first, so a statement
+     * that fails leaves sentinels rather than the previous statement's data. */
+    esqlc_rt_sqlsa_reset();
     if (esqlc_rt_ensure() != 0) return -1;
     if (!name || !sql) { esqlc_rt_set_err_code(-3004); return -1; }
     if (var_count < 0) var_count = 0;
@@ -156,11 +159,13 @@ int esqlc_cursor_open(const char *name, const char *sql, size_t sql_len,
         return -1;
     }
     c->state = CUR_OPEN;      /* positioned before the first row (FR-004.12) */
+    esqlc_rt_sqlsa_from_stmt(c->st, 0);   /* FR-005.17: OPEN populates */
     esqlc_rt_set_ok();
     return 0;
 }
 
 int esqlc_cursor_fetch(const char *name, const esqlc_hostvar_t *vars, int n) {
+    esqlc_rt_sqlsa_reset();          /* FR-005.20: including every FETCH */
     if (esqlc_rt_ensure() != 0) return -1;
     if (n < 0) n = 0;
     cursor_t *c = find_cursor(name);
@@ -233,6 +238,10 @@ int esqlc_cursor_fetch(const char *name, const esqlc_hostvar_t *vars, int n) {
             *c->outv[i]->ind_addr = 0;
         }
     }
+    /* One row accounted to this FETCH. The accumulator fixture sums
+     * these and compares against the row count, so a missing reset
+     * overshoots rather than reading plausibly. */
+    esqlc_rt_sqlsa_from_stmt(c->st, 1);
     esqlc_rt_set_ok();
     return 0;
 }
@@ -245,6 +254,12 @@ int esqlc_cursor_close(const char *name) {
         esqlc_rt_set_err_code(-4003);
         return -1;
     }
+    /* FR-005.17: CLOSE populates too, and the metadata it reads lives on the
+     * statement — so this must happen before the statement is closed. The
+     * first attempt ran it afterwards, against a NULL handle, and silently
+     * reported the character sentinel instead of the table. */
+    esqlc_rt_sqlsa_reset();
+    esqlc_rt_sqlsa_from_stmt(c->st, 0);
     /* Release the result set; the cursor returns to `declared` so a later OPEN
      * re-runs the statement (FR-004.15). */
     if (c->st) { mysql_stmt_free_result(c->st); mysql_stmt_close(c->st); c->st = NULL; }

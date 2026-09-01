@@ -326,10 +326,19 @@ def assert_sqlsa_layout(out: str) -> None:
           "every integer field must be a fixed-width type, never a native long")
 
 
-def assert_sqlsa_emission(out: str) -> None:
-    """T536, T540, T541 — registration, ABI-only calls, and the sync markers."""
+def assert_sqlsa_registered(out: str) -> None:
+    """T542 — registration is emitted before the first statement.
+
+    Asserted on a fixture that has statements. The layout fixture has none, and
+    a program with no statements needs no registration: there is nothing that
+    could populate the area. That is correct behaviour, not a missing call.
+    """
     check("FR-005.17", "esqlc_sqlsa_register(&sqlsa, SQLSA_LEN, 300)" in out,
           "the SQLSA must be registered, or the runtime writes nowhere")
+
+
+def assert_sqlsa_emission(out: str) -> None:
+    """T536, T540, T541 — ABI-only calls and the sync markers."""
     check("NFR-005.1", "--8<-- esqlc sqlsa layout begin --8<--" in out
           and "--8<-- esqlc sqlsa layout end --8<--" in out,
           "the layout block must be bracketed so sqlsa_layout_sync can lift it")
@@ -373,6 +382,9 @@ def main() -> int:
         assert_sqlsa_sizes(out)
         assert_sqlsa_layout(out)
         assert_sqlsa_emission(out)
+    out = emit(pp, FIX / "rt" / "sqlsa_cursor_stats.sqlc")
+    if out:
+        assert_sqlsa_registered(out)
 
     for f in failures:
         print(f"FAIL {f}")

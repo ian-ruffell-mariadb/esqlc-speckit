@@ -27,6 +27,7 @@ add_executable(esqlcpp
     src/pp/dispatch.cc
     src/pp/emit.cc
     src/pp/whenever.cc
+    src/pp/sqlsa.cc
 )
 target_include_directories(esqlcpp PRIVATE src/pp)
 
@@ -59,6 +60,7 @@ if(MARIADB_CONFIG)
         src/rt/exec.c
         src/rt/cursor.c
         src/rt/sqlca.c
+        src/rt/sqlsa.c
         src/rt/diag.c
     )
     target_include_directories(esqlc PUBLIC include PRIVATE src/rt)

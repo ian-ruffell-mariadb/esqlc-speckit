@@ -179,6 +179,16 @@ std::string name_after_verb(const std::string &body, const char *verb) {
     return id;
 }
 
+// The bare word at or after `from`, uppercased. Used to read the token after
+// VERSION, which is either a number or CURRENT.
+std::string word_after(const std::string &b, std::size_t from) {
+    while (from < b.size() && std::isspace((unsigned char)b[from])) ++from;
+    std::string w;
+    while (from < b.size() && (std::isalnum((unsigned char)b[from]) || b[from] == '_'))
+        w += (char)std::toupper((unsigned char)b[from++]);
+    return w;
+}
+
 const char *type_macro(unsigned t) {
     switch (t) {
         case 1: return "ESQLC_T_CHAR_FIXED";
@@ -214,6 +224,13 @@ std::string emit(const std::string &file, const ScanResult &sr,
     WheneverState when;          // Gate 4: per-condition action table
     bool sqlca_declared = false;
     bool sqlca_pending  = false;   // declared, not yet registered
+    // Gate 5. The SQLSA exists only from version 300, so the selected version
+    // is state the INCLUDE SQLSA handler needs and cannot infer.
+    bool sqlsa_declared    = false;
+    bool sqlsa_pending     = false;
+    int  sqlsa_version     = 0;
+    bool structures_seen   = false;
+    int  structures_version = 2;   // FR-005.10: version 2 absent a directive
 
     // A #line directive must begin a line — only whitespace may precede the #.
     // An EXEC SQL sitting after other C on the same source line would otherwise
@@ -276,13 +293,32 @@ std::string emit(const std::string &file, const ScanResult &sr,
 
         line_directive(k.pos.line);
 
-        if (sqlca_pending) {
+        // Registration is a *call*, so it may only be emitted where a call can
+        // run. The flush used to trigger on the first construct of any kind,
+        // which was fine until a fixture put a DECLARE CURSOR — a declaration
+        // that emits no executable code — between the INCLUDE and the first
+        // statement. The call then landed at file scope and the unit would not
+        // compile. Gate 4 never saw it because no fixture had that ordering.
+        const bool at_exec = (h->where == PosClass::Exec);
+
+        if (sqlca_pending && at_exec) {
             // The SQLCA is declared at file scope, where no call can run, so
             // registration is emitted here — before the first statement that
             // could populate it. A dead helper function was the first attempt
             // and never executed.
             o << "esqlc_sqlca_register(&sqlca, SQLCA_LEN);\n";
             sqlca_pending = false;
+            at_line_start = true;
+        }
+
+        if (sqlsa_pending && at_exec) {
+            // Same reasoning as the SQLCA above: file scope runs no code, so
+            // registration is emitted before the first statement that could
+            // populate the area.
+            o << "esqlc_sqlsa_register(&sqlsa, "
+              << (sqlsa_version == 330 ? "SQLSA_LEN_R330" : "SQLSA_LEN")
+              << ", " << sqlsa_version << ");\n";
+            sqlsa_pending = false;
             at_line_start = true;
         }
 
@@ -302,20 +338,95 @@ std::string emit(const std::string &file, const ScanResult &sr,
             continue;
         }
 
-        // ---- INCLUDE STRUCTURES (T477) ----------------------------------
-        // Only the ordering rule is in slice scope. The version matrix —
-        // FR-005.8/.9/.11/.12/.13 — belongs to a later slice, so a
-        // well-placed directive is still refused by name.
+        // ---- INCLUDE STRUCTURES (T477, T566) ----------------------------
+        // Gate 5 implements version selection. FR-005.12: the directive must
+        // precede any INCLUDE SQLCA/SQLSA/SQLDA.
         if (k.keyword == "INCLUDE STRUCTURES") {
-            if (sqlca_declared) {
+            if (sqlca_declared || sqlsa_declared) {
                 d.error("ESQLC-5001", k.pos,
                         "INCLUDE STRUCTURES must precede any INCLUDE SQLCA, "
                         "SQLSA or SQLDA directive");
-            } else {
-                d.error("ESQLC-1012", k.pos,
-                        "INCLUDE STRUCTURES version selection is not implemented "
-                        "in this slice; owned by feature 005 (diagnostics)");
+                continue;
             }
+            // The body is `[ALL] VERSION v` or per-structure `NAME VERSION v`,
+            // possibly several. Only what the slice needs is read: which
+            // structure, and which version.
+            bool names_sqlsa = find_kw(k.body, "SQLSA") != std::string::npos;
+            bool names_sqlca = find_kw(k.body, "SQLCA") != std::string::npos;
+            std::size_t vp = find_kw(k.body, "VERSION");
+            if (vp == std::string::npos) {
+                d.error("ESQLC-1012", k.pos,
+                        "INCLUDE STRUCTURES without VERSION is not implemented "
+                        "in this slice; owned by feature 005 (diagnostics)");
+                continue;
+            }
+            std::string tok = word_after(k.body, vp + 7);
+            if (tok == "CURRENT") {
+                // FR-005.26 is out of slice, and ESQLC-5007 is the correct
+                // refusal rather than a generic ESQLC-1012: the registered
+                // condition is "VERSION CURRENT without a reachable
+                // SQLGETSYSTEMVERSION", and there is never a reachable one.
+                d.error("ESQLC-5007", k.pos,
+                        "SQLSA VERSION CURRENT requires SQLGETSYSTEMVERSION, "
+                        "which has no analogue here");
+                continue;
+            }
+            int v = 0;
+            for (char c : tok) {
+                if (c < '0' || c > '9') { v = -1; break; }
+                v = v * 10 + (c - '0');
+            }
+            if (v <= 0) {
+                d.error("ESQLC-5002", k.pos,
+                        "unsupported structure version '" + tok +
+                        "' (SQL error 11203)");
+                continue;
+            }
+            // FR-005.9. 330 exists for the SQLSA only, so the two failures are
+            // distinct diagnostics rather than one vague refusal.
+            if (v == 330 && !names_sqlsa) {
+                d.error("ESQLC-5003", k.pos,
+                        std::string("version 330 is defined for SQLSA only, not for ") +
+                        (names_sqlca ? "SQLCA" : "the named structure"));
+                continue;
+            }
+            if (!sqlsa_version_ok(v, names_sqlsa)) {
+                d.error("ESQLC-5002", k.pos,
+                        "unsupported structure version " + tok +
+                        " (SQL error 11203); accepted versions are 1, 2, 300, "
+                        "330 (SQLSA only) and 340 or later");
+                continue;
+            }
+            structures_version = v;
+            structures_seen    = true;
+            continue;
+        }
+
+        // ---- INCLUDE SQLSA (T567) ---------------------------------------
+        if (k.keyword == "INCLUDE SQLSA") {
+            if (sqlsa_declared) {
+                d.error("ESQLC-5005", k.pos,
+                        "more than one non-EXTERNAL SQLSA declaration");
+                continue;
+            }
+            sqlsa_declared = true;
+            line_directive(k.pos.line);
+            // The SQLSA exists only from version 300. Absent an INCLUDE
+            // STRUCTURES the default is version 2 (FR-005.10), which has no
+            // SQLSA to declare, so this is a refusal and not an assumption.
+            if (!structures_seen || structures_version < 300) {
+                d.error("ESQLC-5002", k.pos,
+                        "INCLUDE SQLSA requires INCLUDE STRUCTURES with version "
+                        "300 or later; version 2 has no SQLSA");
+                continue;
+            }
+            int v = (structures_version == 330) ? 330 : 300;
+            o << sqlsa_layout();
+            o << "struct " << (v == 330 ? "SQLSA_TYPE_R330" : "SQLSA_TYPE")
+              << " sqlsa;\n";
+            sqlsa_version = v;
+            sqlsa_pending = true;   // registered at the first statement below
+            at_line_start = true;
             continue;
         }
 
@@ -330,10 +441,19 @@ std::string emit(const std::string &file, const ScanResult &sr,
             line_directive(k.pos.line);
             // FR-005.10: absent an INCLUDE STRUCTURES, version 2 is generated
             // and the compiler says so. Informational, not an error.
-            d.info("ESQLC-5006", k.pos,
-                   "INCLUDE STRUCTURES directive for SQL is missing; SQL VERSION 2 "
-                   "is assumed, which may produce incorrect results for features "
-                   "introduced after version 2");
+            //
+            // Gate 4 emitted this unconditionally, which was correct then only
+            // because INCLUDE STRUCTURES always failed — the directive could
+            // never actually be honoured, so the message was never wrong. Gate
+            // 5 makes version selection work, so the condition the requirement
+            // states has to be honoured too, or every program that does the
+            // right thing is told it did not.
+            if (!structures_seen) {
+                d.info("ESQLC-5006", k.pos,
+                       "INCLUDE STRUCTURES directive for SQL is missing; SQL VERSION 2 "
+                       "is assumed, which may produce incorrect results for features "
+                       "introduced after version 2");
+            }
             o << "#define SQLCA_EYE_CATCHER \"CA\"\n";
             o << "#define SQLCA_LEN 430\n";
             // DIV-041: the layout is this implementation's, so only the total

@@ -1,10 +1,18 @@
 /* T514 — the accumulator idiom of §9 p.9-13, and the only fixture shape that
    detects a missing per-statement reset (FR-005.20).
 
-   If SQLSA is not reset before each FETCH, the per-fetch records_used stays at
-   its previous value and the accumulated total overshoots the row count. A
-   test that read one field after one FETCH would see a plausible number and
-   pass. */
+   Two assertions, because the first one alone turned out not to be enough.
+
+   The accumulated total must equal the row count. That catches a per-fetch
+   value that is wrong, but NOT a missing reset — mutation testing showed the
+   mutant surviving, because populate() overwrites records_used on every fetch
+   whether or not the area was reset first.
+
+   What does catch it is the *terminating* FETCH. It is a statement, so it
+   resets (FR-005.20), and it retrieves nothing, so it populates nothing —
+   leaving sentinels. Without the reset it leaves the last row's statistics
+   behind, which is a plausible-looking number attributed to a fetch that found
+   no row. That is the failure the requirement exists to prevent. */
 #pragma SQL
 #include <stdio.h>
 long sqlcode;
@@ -15,11 +23,13 @@ EXEC SQL BEGIN DECLARE SECTION;
   short part_num; char part_desc[19];
 EXEC SQL END DECLARE SECTION;
 
+/* Declaration position: a cursor DECLARE is a declaration. */
+EXEC SQL DECLARE c2 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
+
 int main(void) {
   long acc_used = 0;
   int  rows = 0;
   EXEC SQL BEGIN WORK;
-  EXEC SQL DECLARE c2 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
   EXEC SQL OPEN c2;
   for (;;) {
     EXEC SQL FETCH c2 INTO :part_num, :part_desc;
@@ -28,9 +38,21 @@ int main(void) {
     rows++;
     acc_used += sqlsa.u.dml.stats[0].records_used;
   }
+  /* The loop has just exited on sqlcode 100. That FETCH measured nothing, so
+     the area must read as not-measured rather than holding the last row. */
+  if (sqlsa.u.dml.stats[0].records_used != -1) {
+    printf("FAIL: after the terminating FETCH records_used=%ld, want the sentinel\n",
+           (long)sqlsa.u.dml.stats[0].records_used);
+    return 1;
+  }
+  if (sqlsa.u.dml.num_tables != -1) {
+    printf("FAIL: after the terminating FETCH num_tables=%d, want the sentinel\n",
+           (int)sqlsa.u.dml.num_tables);
+    return 1;
+  }
   EXEC SQL CLOSE c2;
   EXEC SQL COMMIT WORK;
   printf("rows=%d acc_used=%ld\n", rows, acc_used);
-  /* One row accounted per FETCH. A stale SQLSA makes this overshoot. */
+  /* One row accounted per FETCH. */
   return (rows > 0 && acc_used == (long)rows) ? 0 : 1;
 }

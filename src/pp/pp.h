@@ -107,6 +107,17 @@ std::string whenever_checks(const WheneverState &st);
 // SD-5: WHENEVER applies to DML, DCL and DDL, not to transaction control.
 bool whenever_applies(const std::string &keyword);
 
+// ---- SQLSA (Gate 5, T560-T564) -----------------------------------------
+// Both version families, always emitted together: the manual names the types
+// distinctly and FR-005.26 has VERSION CURRENT generate both, so only the
+// declared *variable* takes the selected version. Bracketed with markers that
+// tests/harness/sqlsa_layout_sync.sh lifts, because this layout is also encoded
+// in src/rt/rt_sqlsa_offsets.h and nothing else would notice them drifting.
+std::string sqlsa_layout();
+
+// FR-005.9: 1, 2, 300, 340+ for all three structures; 330 for SQLSA only.
+bool sqlsa_version_ok(int v, bool is_sqlsa);
+
 // ---- dispatch (T069) ---------------------------------------------------
 struct Handler {
     const char *keyword;

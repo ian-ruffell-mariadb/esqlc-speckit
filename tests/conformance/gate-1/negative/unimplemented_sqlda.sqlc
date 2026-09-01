@@ -1,0 +1,8 @@
+/* Keeps a live ESQLC-1012 case. Gate 4 used INCLUDE SQLSA for this; Gate 5
+   implements it, so the case moves to INCLUDE SQLDA, which feature 007 owns.
+   The point of the fixture is that a recognised directive with no handler
+   refuses by name rather than silently no-opping (Constitution III). */
+#pragma SQL
+long sqlcode;
+EXEC SQL INCLUDE SQLDA;
+int main(void) { return 0; }
