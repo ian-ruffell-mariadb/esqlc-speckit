@@ -1,0 +1,17 @@
+/* T402 — all three conditions active at once; each must emit its own check,
+   and they must appear in the published precedence order. */
+#pragma SQL
+long sqlcode;
+static void h_err(void) {}
+static void h_warn(void) {}
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL WHENEVER NOT FOUND GOTO :done;
+  EXEC SQL WHENEVER SQLERROR CALL :h_err;
+  EXEC SQL WHENEVER SQLWARNING CALL :h_warn;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+done:
+  return 0;
+}

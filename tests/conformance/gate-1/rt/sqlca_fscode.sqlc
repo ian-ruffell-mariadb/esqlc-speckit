@@ -1,0 +1,20 @@
+/* T409 — SQLCAFSCODE returns file-system / disk-process detail for a failure
+   that has one. Maps onto the existing esqlc_fs_detail entry point. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  long fs = -1; int rc;
+  EXEC SQL BEGIN WORK;
+  part_num = 4102; memcpy(part_desc, "DUPLICATE KEY ROW ", 18);
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  rc = esqlc_fs_detail(&fs);
+  EXEC SQL ROLLBACK WORK;
+  printf("rc=%d fs=%ld\n", rc, fs);
+  return (rc == 0 && fs != 0) ? 0 : 1;
+}

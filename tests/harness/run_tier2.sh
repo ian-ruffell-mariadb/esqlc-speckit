@@ -198,5 +198,32 @@ seed
 run_case cursor_order "$RT/negative/cursor_order.sqlc" 0 && \
   ok "cursor_order: all three out-of-order operations refused (FR-004.19)"
 
+# =====================================================================
+# Gate 4 — WHENEVER and the SQLCA.
+# =====================================================================
+seed
+run_case whenever_flow "$RT/whenever_flow.sqlc" 0 && \
+  ok "whenever_flow: handler on failure, GOTO on 100, CONTINUE disables (FR-005.1)"
+
+seed
+run_case sqlca_items "$RT/sqlca_items.sqlc" 0 && \
+  ok "sqlca_items: numeric items readable (FR-005.14a, FR-005.30)"
+
+seed
+run_case sqlca_copy "$RT/sqlca_copy_survives.sqlc" 0 && \
+  ok "sqlca_copy_survives: a copied SQLCA still reads (FR-005.14a)"
+
+seed
+run_case sqlca_seven "$RT/sqlca_seven_codes.sqlc" 0 && \
+  ok "sqlca_seven_codes: capacity 7, all present codes retrievable (FR-005.15)"
+
+seed
+run_case sqlca_fscode "$RT/sqlca_fscode.sqlc" 0 && \
+  ok "sqlca_fscode: file-system detail returned (FR-005.31)"
+
+seed
+run_case sqlca_misuse "$RT/negative/sqlca_misuse.sqlc" 0 && \
+  ok "sqlca_misuse: 8511 / 8514 / 8515 (FR-005.30)"
+
 echo "tier2: $pass passed, $fail failed"
 exit $(( fail > 0 ))

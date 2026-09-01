@@ -157,9 +157,18 @@ its Gate 2 meaning.
    rather than something to truncate into. */
 int esqlc_sqlca_register(void *sqlca, size_t len);
 
-/* SQLCAGETINFOLIST: copy a caller-selected subset of the diagnostic area into
-   `buf`, in item order. Returns the documented 8510-8517 codes on misuse. */
-int esqlc_sqlca_getinfolist(const int *items, int n_items,
+/* SQLCAGETINFOLIST: copy a caller-selected subset of one diagnostic entry into
+   `buf`, packed in item order at each item's documented size. Returns the
+   documented 8510-8517 codes on misuse.
+
+   Takes the SQLCA explicitly, and an error index. Both are forced by the
+   manual: error 8512 is "invalid SQLCA structure" and 8515 is "error entry
+   index less than zero or greater than the number of errors", neither of which
+   can arise unless both are parameters. An earlier draft of this signature had
+   neither, which would also have made a copied SQLCA unreadable — the very
+   thing registration exists to preserve. */
+int esqlc_sqlca_getinfolist(const void *sqlca, int error_index,
+                            const int *items, int n_items,
                             void *buf, size_t buf_len);
 ```
 

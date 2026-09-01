@@ -90,6 +90,13 @@ int  esqlc_cursor_fetch(const char *name,
                         const esqlc_hostvar_t *vars, int var_count);
 int  esqlc_cursor_close(const char *name);
 
+/* Diagnostic area (Gate 4). Registration rather than runtime-held state, so a
+ * copied or EXTERNAL-shared SQLCA carries real data — see the contract. */
+int  esqlc_sqlca_register(void *sqlca, size_t len);
+int  esqlc_sqlca_getinfolist(const void *sqlca, int error_index,
+                             const int *items, int n_items,
+                             void *buf, size_t buf_len);
+
 long esqlc_sqlcode(void);
 int  esqlc_fs_detail(long *fs_code);
 

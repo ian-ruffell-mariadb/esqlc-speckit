@@ -1,0 +1,9 @@
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL WHENEVER SQLERROR CALL :123not_an_identifier;
+  return 0;
+}

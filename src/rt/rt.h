@@ -42,6 +42,9 @@ void esqlc_rt_set_err_from_mysql(MYSQL *m);
 void esqlc_rt_set_err_from_stmt(MYSQL_STMT *s);
 void esqlc_rt_set_err_code(long code);
 
+/* sqlca.c */
+void esqlc_rt_sqlca_populate(long sqlcode, long fs_code, long rows);
+
 /* cursor.c */
 void esqlc_rt_cursors_release_all(void);   /* FR-003.8 */
 

@@ -1,0 +1,19 @@
+/* T403 — all four action forms. CONTINUE must emit nothing at all. */
+#pragma SQL
+long sqlcode;
+static void handler(void) {}
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL WHENEVER SQLERROR CALL :handler;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+  EXEC SQL WHENEVER SQLERROR GOTO :done;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+  EXEC SQL WHENEVER SQLERROR GO TO :done;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+  EXEC SQL WHENEVER SQLERROR CONTINUE;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+done:
+  return 0;
+}

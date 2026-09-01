@@ -29,7 +29,11 @@ struct HostVarRef {
     std::string name;                 // without the colon
 };
 
-enum class PosClass { Decl, Exec };
+// FR-001.13: WHENEVER, SQL SOURCE and CONTROL are accepted in ANY position,
+// so the position model needs a third value. Gate 4 found this: the table
+// had only Decl and Exec, and WHENEVER registered as Decl was rejected
+// everywhere a program actually writes it.
+enum class PosClass { Decl, Exec, Any };
 
 struct Construct {
     std::string keyword;              // leading keyword(s), uppercased
@@ -77,6 +81,31 @@ struct HostVar {
 // Parse the interior of a declare section. Appends to `out`.
 void parse_declare_section(const std::string &body, Pos at,
                            std::vector<HostVar> &out, Diag &d);
+
+// ---- WHENEVER (Gate 4, T470-T472) --------------------------------------
+// The directive emits nothing itself. It updates one entry per condition, and
+// every subsequent *applicable* statement appends checks built from the table.
+// State is per-condition: setting SQLERROR leaves NOT FOUND alone.
+enum class WhenCond { NotFound = 0, SqlError = 1, SqlWarning = 2, Count = 3 };
+enum class WhenAct  { Continue, Call, Goto };
+
+struct WheneverEntry {
+    WhenAct     act = WhenAct::Continue;   // CONTINUE emits nothing
+    std::string target;                    // handler or label
+};
+struct WheneverState {
+    WheneverEntry e[(int)WhenCond::Count];
+};
+
+// Apply one WHENEVER directive to the table.
+void whenever_set(WheneverState &st, const Construct &k, Diag &d);
+
+// The checks to append after an applicable statement, in the published
+// precedence order: NOT FOUND, then SQLERROR, then SQLWARNING.
+std::string whenever_checks(const WheneverState &st);
+
+// SD-5: WHENEVER applies to DML, DCL and DDL, not to transaction control.
+bool whenever_applies(const std::string &keyword);
 
 // ---- dispatch (T069) ---------------------------------------------------
 struct Handler {

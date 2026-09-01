@@ -211,6 +211,9 @@ std::string emit(const std::string &file, const ScanResult &sr,
     int  hv_seq = 0;
     std::map<std::string, CursorInfo> cursors;   // name -> declaration (T362)
     bool at_line_start = true;
+    WheneverState when;          // Gate 4: per-condition action table
+    bool sqlca_declared = false;
+    bool sqlca_pending  = false;   // declared, not yet registered
 
     // A #line directive must begin a line — only whitespace may precede the #.
     // An EXEC SQL sitting after other C on the same source line would otherwise
@@ -224,6 +227,14 @@ std::string emit(const std::string &file, const ScanResult &sr,
     };
     auto track = [&](const std::string &t) {
         if (!t.empty()) at_line_start = (t.back() == '\n');
+    };
+    // Close a generated statement block: refresh sqlcode, then append the
+    // WHENEVER checks if this statement class carries them (SD-5).
+    auto close_stmt = [&](const std::string &keyword) {
+        o << "  sqlcode = esqlc_sqlcode();\n";
+        if (whenever_applies(keyword)) o << whenever_checks(when);
+        o << "} while (0);\n";
+        at_line_start = true;
     };
 
     for (const auto &ch : sr.chunks) {
@@ -252,7 +263,7 @@ std::string emit(const std::string &file, const ScanResult &sr,
                     "feature " + h->owning_feature);
             continue;
         }
-        if (h->where != k.where) {
+        if (h->where != PosClass::Any && h->where != k.where) {
             d.error("ESQLC-1008", k.pos,
                     "'" + k.keyword + "' must appear in " +
                     (h->where == PosClass::Decl ? "declaration" : "executable") +
@@ -265,12 +276,76 @@ std::string emit(const std::string &file, const ScanResult &sr,
 
         line_directive(k.pos.line);
 
+        if (sqlca_pending) {
+            // The SQLCA is declared at file scope, where no call can run, so
+            // registration is emitted here — before the first statement that
+            // could populate it. A dead helper function was the first attempt
+            // and never executed.
+            o << "esqlc_sqlca_register(&sqlca, SQLCA_LEN);\n";
+            sqlca_pending = false;
+            at_line_start = true;
+        }
+
         if (k.keyword == "BEGIN WORK" || k.keyword == "COMMIT WORK" ||
             k.keyword == "ROLLBACK WORK") {
             const char *fn = k.keyword == "BEGIN WORK"  ? "esqlc_txn_begin"
                            : k.keyword == "COMMIT WORK" ? "esqlc_txn_commit"
                                                         : "esqlc_txn_rollback";
-            o << "do { " << fn << "(); sqlcode = esqlc_sqlcode(); } while (0);\n";
+            o << "do { " << fn << "();\n";
+            close_stmt(k.keyword);          // SD-5: no checks for these
+            continue;
+        }
+
+        // ---- WHENEVER (T470-T472, T475) ---------------------------------
+        if (k.keyword == "WHENEVER") {
+            whenever_set(when, k, d);      // emits nothing itself
+            continue;
+        }
+
+        // ---- INCLUDE STRUCTURES (T477) ----------------------------------
+        // Only the ordering rule is in slice scope. The version matrix —
+        // FR-005.8/.9/.11/.12/.13 — belongs to a later slice, so a
+        // well-placed directive is still refused by name.
+        if (k.keyword == "INCLUDE STRUCTURES") {
+            if (sqlca_declared) {
+                d.error("ESQLC-5001", k.pos,
+                        "INCLUDE STRUCTURES must precede any INCLUDE SQLCA, "
+                        "SQLSA or SQLDA directive");
+            } else {
+                d.error("ESQLC-1012", k.pos,
+                        "INCLUDE STRUCTURES version selection is not implemented "
+                        "in this slice; owned by feature 005 (diagnostics)");
+            }
+            continue;
+        }
+
+        // ---- INCLUDE SQLCA (T476, T477) ---------------------------------
+        if (k.keyword == "INCLUDE SQLCA") {
+            if (sqlca_declared) {
+                d.error("ESQLC-5005", k.pos,
+                        "more than one non-EXTERNAL SQLCA declaration");
+                continue;
+            }
+            sqlca_declared = true;
+            line_directive(k.pos.line);
+            // FR-005.10: absent an INCLUDE STRUCTURES, version 2 is generated
+            // and the compiler says so. Informational, not an error.
+            d.info("ESQLC-5006", k.pos,
+                   "INCLUDE STRUCTURES directive for SQL is missing; SQL VERSION 2 "
+                   "is assumed, which may produce incorrect results for features "
+                   "introduced after version 2");
+            o << "#define SQLCA_EYE_CATCHER \"CA\"\n";
+            o << "#define SQLCA_LEN 430\n";
+            // DIV-041: the layout is this implementation's, so only the total
+            // and the eye-catcher are fixed. Programs copy it with SQLCA_LEN
+            // and share it EXTERNAL, so the total is load-bearing.
+            o << "struct sqlca_type { char eye_catcher[2]; char sqlca_private[428]; };\n";
+            o << "struct sqlca_type sqlca;\n";
+            o << "_Static_assert(sizeof(struct sqlca_type) == SQLCA_LEN, \"SQLCA_LEN\");\n";
+            o << "_Static_assert(offsetof(struct sqlca_type, eye_catcher) == 0, "
+                 "\"eye-catcher leads\");\n";
+            sqlca_pending = true;   // registered at the first statement below
+            at_line_start = true;
             continue;
         }
 
@@ -347,9 +422,8 @@ std::string emit(const std::string &file, const ScanResult &sr,
             const CursorInfo &ci = it->second;
 
             if (k.keyword == "CLOSE") {
-                o << "do { esqlc_cursor_close(\"" << cname << "\");"
-                  << " sqlcode = esqlc_sqlcode(); } while (0);\n";
-                at_line_start = true;
+                o << "do { esqlc_cursor_close(\"" << cname << "\");\n";
+                close_stmt(k.keyword);
                 continue;
             }
 
@@ -398,9 +472,7 @@ std::string emit(const std::string &file, const ScanResult &sr,
             else
                 o << "  esqlc_cursor_fetch(\"" << cname << "\", " << arr
                   << ", " << binds.size() << ");\n";
-            o << "  sqlcode = esqlc_sqlcode();\n";
-            o << "} while (0);\n";
-            at_line_start = true;
+            close_stmt(k.keyword);
             continue;
         }
 
@@ -452,8 +524,7 @@ std::string emit(const std::string &file, const ScanResult &sr,
             if (bad) { o << "} while (0);\n"; continue; }
             o << "  esqlc_stmt_exec(" << c_string_literal(sql) << ", "
               << sql.size() << ", " << arr << ", " << cls.size() << ");\n";
-            o << "  sqlcode = esqlc_sqlcode();\n";
-            o << "} while (0);\n";
+            close_stmt(k.keyword);
             continue;
         }
 
@@ -486,8 +557,7 @@ std::string emit(const std::string &file, const ScanResult &sr,
                   << sql.size() << ", " << arr << ", "
                   << k.hostvars.size() << ");\n";
             }
-            o << "  sqlcode = esqlc_sqlcode();\n";
-            o << "} while (0);\n";
+            close_stmt(k.keyword);
             continue;
         }
     }

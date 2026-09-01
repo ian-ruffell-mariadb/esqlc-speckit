@@ -1,0 +1,15 @@
+/* T404 — SD-5. A handler is active across both a DML statement and a
+   COMMIT WORK. Checks must follow the INSERT and NOT the COMMIT. */
+#pragma SQL
+long sqlcode;
+static void handler(void) {}
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL WHENEVER SQLERROR CALL :handler;
+  EXEC SQL BEGIN WORK;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+  EXEC SQL COMMIT WORK;
+  return 0;
+}

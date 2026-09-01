@@ -16,6 +16,89 @@ has silently changed what an older negative fixture was testing. T413 exists to
 keep a live `ESQLC-1012` case once `WHENEVER` and `INCLUDE SQLCA` are
 implemented.
 
+---
+
+## Implementation status — 2026-09-01
+
+**Gate 4 is green end to end.** Branch `gate-4-implementation`.
+`ctest` 8/8 with a server, 7/7 under `-DESQLC_NO_MARIADB=ON`; Tier 2 25/25;
+negatives 14/14; spec assertions 47/47; diagnostic registry clean at 30 codes;
+`contract_sync` 16 implemented, 0 planned.
+
+**Principle IV honoured.** Phase B failures were captured before any Phase C
+work: two negatives failing and six Tier 2 cases failing to build, with
+Gates 1-3's nineteen still passing.
+
+### Mutation checks
+
+| Check | Result |
+|---|---|
+| T460 reorder the precedence checks | failed `whenever_precedence`, naming the wrong order it produced |
+| T462 remove SD-5 so `WHENEVER` hits transaction control | failed both FR-005.7 assertions — "3 checks, expected 1" and "no check may follow COMMIT WORK" |
+| T463 accessors read runtime state | **eventually** failed `sqlca_copy` — see below |
+| T461 leak an action past its supersession | **not run.** The `whenever_scope` fixture exists but no spec assertion consumes it, so there was nothing to mutate against. Outstanding |
+
+### T463 found a real bug, not just a weak guard
+
+Worth recording in full, because the sequence matters.
+
+1. Reasoning about the mutation *before running it* showed the copy test could
+   not discriminate: nothing invalidated the runtime's own view between copying
+   the `SQLCA` and reading the copy, so an accessor ignoring its `sqlca`
+   argument would return the same answer and pass.
+2. Strengthening the fixture — running a succeeding statement between the copy
+   and the read — **still** did not discriminate.
+3. Pursuing why surfaced a genuine defect: `populate` set `actual = 0` on
+   success but never cleared the entry bytes, so a program reading item 22
+   after a **successful** statement got the previous statement's error number.
+   Current-looking data that is not current, which Constitution III forbids.
+4. Fixing that bug both removed the defect and made the guard discriminate.
+
+The mutation check earned its place by finding a defect rather than confirming
+one was absent.
+
+### Three defects found by building
+
+1. **`PosClass` had no "any" value.** FR-001.13 requires `WHENEVER` to be
+   accepted anywhere, but the position model was binary, so `WHENEVER`
+   registered as `Decl` was rejected everywhere a program actually writes it.
+   Added `PosClass::Any`.
+2. **Registration was dead code.** `INCLUDE SQLCA` emitted a
+   `static void __esqlc_reg_sqlca(void)` that nothing ever called, so the
+   runtime wrote nowhere and every accessor returned 8512. The `SQLCA` is
+   declared at file scope where no call can run, so the registration is now
+   emitted immediately before the first statement.
+3. **`INCLUDE STRUCTURES` was never implemented at all**, so `ESQLC-5001` could
+   not fire — the directive was still dispatched to `ESQLC-1012`. Added the
+   minimal handler the slice scope calls for: ordering violation gives 5001, a
+   well-placed directive still gives 1012 because the version matrix is out of
+   scope.
+
+### A fourth instance of the mutation harness misleading me
+
+`grep -c "error:" >/dev/null` swallowed build output, so a mutation that failed
+to compile left the **previous** mutation's binary in place and T462 appeared to
+reproduce T460's failure. Separately, a restore followed by `cmake --build` did
+not always recompile, so a "restored" run still showed failures. Both fixed by
+asserting the mutation is present in the source before building, showing build
+errors, and `touch`ing the file after restoring.
+
+That is now four occurrences in this project of a verification step that could
+not fail. It is the single most repeated defect class here.
+
+### Outstanding
+
+- **T461** has no assertion to mutate against (see above).
+- **Phase D T490-T492** were verified through the negative suite rather than
+  executed as separate tasks; all three diagnostics fire at the right position.
+- **Phase E** T500 (traceability), T502 (slice-decision review), T503
+  (recording that `SQLWARNING` never fired), T505 and T506 remain.
+- `WHENEVER SQLWARNING` is verified structurally only and **never fired at
+  runtime**, exactly as the slice predicted, because the warning values are
+  `DIV-042` and still open.
+
+---
+
 ## Phase A — fixtures and harness
 
 | ID | Task | Reqs | Deps |
