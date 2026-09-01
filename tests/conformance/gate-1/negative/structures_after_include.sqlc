@@ -1,0 +1,5 @@
+#pragma SQL
+long sqlcode;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE STRUCTURES ALL VERSION 300;
+int main(void) { return 0; }

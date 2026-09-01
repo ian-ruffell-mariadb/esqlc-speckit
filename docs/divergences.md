@@ -277,6 +277,14 @@ directly reads the wrong bytes.
 that item 22 reports errors positive and warnings negative — the inverse of
 `sqlcode` — so bridging code must flip the sign.
 
+**Strengthened by Gate 4 (2026-09-01).** The runtime writes into the program's
+own registered `SQLCA` rather than holding its own state, so the two things §9
+p.9-3 describes both work: a copy taken with `SQLCA_LEN` carries real data, and
+an `EXTERNAL`-shared area is the one being populated. An
+accessor-reads-runtime-state design would have made every saved copy an empty
+430-byte husk while still passing a naive copy test — mutation T463 proved the
+distinction, but only after a stale-entry bug was fixed that had been masking it.
+
 ---
 
 ## DIV-042 — Conversion warning codes are chosen, not inherited

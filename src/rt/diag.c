@@ -15,15 +15,18 @@ void esqlc_rt_set_ok(void) {
     esqlc_state_t *s = esqlc_rt_state();
     s->sqlcode = 0;
     s->fs_code = 0;
+    esqlc_rt_sqlca_populate(0, 0, 0);
 }
 
 void esqlc_rt_set_notfound(void) {
     esqlc_rt_state()->sqlcode = 100;
+    esqlc_rt_sqlca_populate(100, 0, 0);
 }
 
 void esqlc_rt_set_err_code(long code) {
     esqlc_state_t *s = esqlc_rt_state();
     s->sqlcode = code < 0 ? code : -code;
+    esqlc_rt_sqlca_populate(s->sqlcode, s->fs_code, 0);
 }
 
 void esqlc_rt_set_err_from_mysql(MYSQL *m) {
@@ -31,6 +34,7 @@ void esqlc_rt_set_err_from_mysql(MYSQL *m) {
     unsigned e = m ? mysql_errno(m) : 0;
     s->sqlcode = e ? -(long)e : -1;
     s->fs_code = (long)e;
+    esqlc_rt_sqlca_populate(s->sqlcode, s->fs_code, 0);
 }
 
 void esqlc_rt_set_err_from_stmt(MYSQL_STMT *st) {
@@ -38,6 +42,7 @@ void esqlc_rt_set_err_from_stmt(MYSQL_STMT *st) {
     unsigned e = st ? mysql_stmt_errno(st) : 0;
     s->sqlcode = e ? -(long)e : -1;
     s->fs_code = (long)e;
+    esqlc_rt_sqlca_populate(s->sqlcode, s->fs_code, 0);
 }
 
 long esqlc_sqlcode(void) { return esqlc_rt_state()->sqlcode; }

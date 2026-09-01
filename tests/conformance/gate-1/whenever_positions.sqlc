@@ -1,0 +1,13 @@
+/* T405 — FR-001.13: WHENEVER is accepted anywhere, file scope included. */
+#pragma SQL
+long sqlcode;
+static void handler(void) {}
+EXEC SQL WHENEVER SQLERROR CALL :handler;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL WHENEVER SQLWARNING CONTINUE;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+  return 0;
+}

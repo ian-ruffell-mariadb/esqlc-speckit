@@ -24,7 +24,9 @@ int main(void)
 
   
 #line 20 "tests/conformance/gate-1/insert.sqlc"
-do { esqlc_txn_begin(); sqlcode = esqlc_sqlcode(); } while (0);
+do { esqlc_txn_begin();
+  sqlcode = esqlc_sqlcode();
+} while (0);
 #line 20 "tests/conformance/gate-1/insert.sqlc"
 
 
@@ -48,7 +50,9 @@ do {
     long failed_with = sqlcode;
     
 #line 30 "tests/conformance/gate-1/insert.sqlc"
-do { esqlc_txn_rollback(); sqlcode = esqlc_sqlcode(); } while (0);
+do { esqlc_txn_rollback();
+  sqlcode = esqlc_sqlcode();
+} while (0);
 #line 30 "tests/conformance/gate-1/insert.sqlc"
 
     fprintf(stderr, "insert failed, sqlcode %ld\n", failed_with);
@@ -57,7 +61,9 @@ do { esqlc_txn_rollback(); sqlcode = esqlc_sqlcode(); } while (0);
 
   
 #line 35 "tests/conformance/gate-1/insert.sqlc"
-do { esqlc_txn_commit(); sqlcode = esqlc_sqlcode(); } while (0);
+do { esqlc_txn_commit();
+  sqlcode = esqlc_sqlcode();
+} while (0);
 #line 35 "tests/conformance/gate-1/insert.sqlc"
 
   return 0;

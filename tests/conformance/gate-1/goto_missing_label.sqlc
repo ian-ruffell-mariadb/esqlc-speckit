@@ -1,0 +1,14 @@
+/* T415 — the ACCEPTED risk. The preprocessor cannot see C labels, so a GOTO
+   naming one that does not exist is not an ESQL diagnostic; the C compiler
+   reports it. What must hold is that #line fidelity puts the error on the
+   WHENEVER line, which is what makes the limitation survivable. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL WHENEVER SQLERROR GOTO :no_such_label;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+  return 0;
+}

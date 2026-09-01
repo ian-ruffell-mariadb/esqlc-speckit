@@ -1,0 +1,40 @@
+/* T400 — WHENEVER doing its job: a handler on failure, a GOTO on not-found,
+   and CONTINUE disabling a previously active action. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+static int errors = 0;
+static void on_error(void) { ++errors; }
+
+EXEC SQL INCLUDE SQLCA;
+
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+  char  part_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  int reached_end = 0;
+  EXEC SQL WHENEVER SQLERROR CALL :on_error;
+  EXEC SQL WHENEVER NOT FOUND GOTO :notfound;
+
+  EXEC SQL BEGIN WORK;
+
+  part_num = 4102;                      /* exists — no handler should fire */
+  EXEC SQL SELECT part_desc INTO :part_desc FROM parts WHERE part_num = :part_num;
+
+  part_num = 9999;                      /* no such row — jumps to notfound */
+  EXEC SQL SELECT part_desc INTO :part_desc FROM parts WHERE part_num = :part_num;
+
+  printf("FAIL: fell through the not-found jump\n");
+  return 1;
+
+notfound:
+  reached_end = 1;
+  EXEC SQL WHENEVER NOT FOUND CONTINUE;   /* disable before cleanup */
+  EXEC SQL WHENEVER SQLERROR CONTINUE;
+  EXEC SQL COMMIT WORK;
+  printf("errors=%d reached=%d\n", errors, reached_end);
+  return (errors == 0 && reached_end == 1) ? 0 : 1;
+}

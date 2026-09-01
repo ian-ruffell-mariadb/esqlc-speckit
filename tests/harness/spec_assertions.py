@@ -225,6 +225,53 @@ def assert_insert_directions(out: str) -> None:
               f"INSERT reference {x['name']} must stay DIR_IN despite 'INSERT INTO'")
 
 
+CHECK_RE = re.compile(r"if \((sqlcode[^)]*)\)\s*([A-Za-z_][\w]*\(\)|goto \w+);")
+
+
+def assert_whenever(out: str) -> None:
+    """whenever_conditions.sqlc — the published precedence order."""
+    found = [m.group(1).strip() for m in CHECK_RE.finditer(out)]
+    want = ["sqlcode == 100", "sqlcode < 0", "sqlcode > 0 && sqlcode != 100"]
+    # FR-005.5: §9 p.9-6's table fixes this order. Reordering changes which
+    # handler runs when several conditions apply to one statement.
+    check("FR-005.5", found[:3] == want,
+          f"checks must be NOT FOUND, SQLERROR, SQLWARNING in order; got {found[:3]}")
+    check("FR-005.3", len(found) >= 3, "all three conditions must emit a check")
+
+
+def assert_whenever_continue(out: str) -> None:
+    """whenever_actions.sqlc — CONTINUE emits nothing."""
+    # The fixture sets CALL, then GOTO, then GO TO, then CONTINUE, with one
+    # statement after each. Four statements, but only three checks.
+    n_checks = len(CHECK_RE.findall(out))
+    check("FR-005.4", n_checks == 3,
+          f"CONTINUE must emit no check at all; expected 3 checks, got {n_checks}")
+
+
+def assert_whenever_applies_to(out: str) -> None:
+    """whenever_applies_to.sqlc — SD-5: not on transaction control."""
+    # The emitted order is BEGIN WORK, INSERT, COMMIT WORK. Exactly one check
+    # must exist, and it must sit in the INSERT's block.
+    n = len(CHECK_RE.findall(out))
+    check("FR-005.7", n == 1,
+          f"exactly one check expected — after the INSERT only (SD-5); got {n}")
+    after_commit = out.split("esqlc_txn_commit")[-1]
+    check("FR-005.7", not CHECK_RE.search(after_commit),
+          "no check may follow COMMIT WORK (SD-5)")
+
+
+def assert_sqlca(out: str) -> None:
+    """The generated SQLCA: total is API, eye-catcher leads."""
+    check("FR-005.14", "#define SQLCA_LEN 430" in out,
+          "SQLCA_LEN must be 430")
+    check("FR-005.14", '#define SQLCA_EYE_CATCHER "CA"' in out,
+          "the eye-catcher must be CA")
+    check("FR-005.14", "sizeof(struct sqlca_type) == SQLCA_LEN" in out,
+          "the 430-byte total must be statically asserted — programs copy it")
+    check("FR-005.14", "esqlc_sqlca_register(&sqlca, SQLCA_LEN)" in out,
+          "the SQLCA must be registered, or the runtime writes nowhere")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: spec_assertions.py <esqlcpp>", file=sys.stderr)
@@ -243,6 +290,18 @@ def main() -> int:
     out = emit(pp, FIX / "insert.sqlc")
     if out:
         assert_insert_directions(out)
+    out = emit(pp, FIX / "whenever_conditions.sqlc")
+    if out:
+        assert_whenever(out)
+    out = emit(pp, FIX / "whenever_actions.sqlc")
+    if out:
+        assert_whenever_continue(out)
+    out = emit(pp, FIX / "whenever_applies_to.sqlc")
+    if out:
+        assert_whenever_applies_to(out)
+    out = emit(pp, FIX / "rt" / "whenever_flow.sqlc")
+    if out:
+        assert_sqlca(out)
 
     for f in failures:
         print(f"FAIL {f}")

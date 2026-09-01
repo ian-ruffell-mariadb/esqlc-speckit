@@ -1,0 +1,7 @@
+/* T412 — omitting INCLUDE STRUCTURES generates version 2 and emits an
+   informational message saying so (FR-005.10). Informational, not an error:
+   the file must still preprocess successfully. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INCLUDE SQLCA;
+int main(void) { return 0; }

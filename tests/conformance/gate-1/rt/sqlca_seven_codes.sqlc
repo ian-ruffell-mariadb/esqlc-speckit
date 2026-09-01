@@ -1,0 +1,30 @@
+/* T408 — FR-005.15: the area carries up to seven codes. Provoking seven real
+   diagnostics from one MariaDB statement is not practical, so this asserts the
+   capacity is 7 and that every code actually present is retrievable by
+   sequence. The limitation is recorded in the slice's non-proof list. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  int items[2] = { 2, 3 };
+  char buf[4]; short capacity, actual; int i, ok = 1;
+  EXEC SQL BEGIN WORK;
+  part_num = 4102; memcpy(part_desc, "DUPLICATE KEY ROW ", 18);
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  esqlc_sqlca_getinfolist(&sqlca, 0, items, 2, buf, sizeof buf);
+  memcpy(&capacity, buf, 2); memcpy(&actual, buf + 2, 2);
+  for (i = 0; i < actual; ++i) {
+    int one[1] = { 22 }; char b[2]; short code;
+    if (esqlc_sqlca_getinfolist(&sqlca, i, one, 1, b, sizeof b) != 0) { ok = 0; break; }
+    memcpy(&code, b, 2);
+    if (code == 0) ok = 0;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("capacity=%d actual=%d all_retrievable=%d\n", capacity, actual, ok);
+  return (capacity == 7 && actual >= 1 && ok) ? 0 : 1;
+}

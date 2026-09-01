@@ -1,0 +1,38 @@
+/* T407 — §9 p.9-3 discusses copying the SQLCA and sharing it EXTERNAL. If the
+   runtime held its own state and the emitted struct were inert, a copy would be
+   an empty 430-byte husk. Copy it, clobber the original, read the copy. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  char saved[430];
+  int  items[1] = { 22 };                 /* error number, errors positive */
+  char buf[2]; short from_copy;
+  int rc;
+
+  EXEC SQL BEGIN WORK;
+  part_num = 4102; memcpy(part_desc, "DUPLICATE KEY ROW ", 18);
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  if (sqlcode >= 0) { printf("FAIL: expected a failure\n"); return 1; }
+
+  memcpy(saved, &sqlca, SQLCA_LEN);       /* the copy the manual describes */
+
+  /* Make the runtime's own view stale. Without this the test does not
+     discriminate: an accessor that ignored its `sqlca` argument and read
+     runtime state would return the same answer and pass a mutant this test
+     exists to catch. A succeeding statement repopulates the live area with
+     no-error state, so only a genuine read of `saved` can still see the error. */
+  part_num = 4104;
+  EXEC SQL SELECT part_desc INTO :part_desc FROM parts WHERE part_num = :part_num;
+
+  rc = esqlc_sqlca_getinfolist(saved, 0, items, 1, buf, sizeof buf);
+  memcpy(&from_copy, buf, 2);
+  EXEC SQL ROLLBACK WORK;
+  printf("rc=%d from_copy=%d\n", rc, from_copy);
+  return (rc == 0 && from_copy > 0) ? 0 : 1;   /* SD-4: errors are positive */
+}

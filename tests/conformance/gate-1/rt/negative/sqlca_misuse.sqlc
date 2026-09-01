@@ -1,0 +1,23 @@
+/* T414 — the documented misuse codes: 8511 invalid item code, 8514 insufficient
+   buffer, 8515 error-entry index out of range. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  int bad_item[1] = { 9999 }, ok_item[1] = { 1 };
+  char buf[8]; int a, b, c;
+  EXEC SQL BEGIN WORK;
+  part_num = 4102; memcpy(part_desc, "DUPLICATE KEY ROW ", 18);
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  a = esqlc_sqlca_getinfolist(&sqlca, 0, bad_item, 1, buf, sizeof buf);  /* 8511 */
+  b = esqlc_sqlca_getinfolist(&sqlca, 0, ok_item, 1, buf, 1);            /* 8514 */
+  c = esqlc_sqlca_getinfolist(&sqlca, 99, ok_item, 1, buf, sizeof buf);  /* 8515 */
+  EXEC SQL ROLLBACK WORK;
+  printf("bad_item=%d small_buf=%d bad_index=%d\n", a, b, c);
+  return (a == 8511 && b == 8514 && c == 8515) ? 0 : 1;
+}

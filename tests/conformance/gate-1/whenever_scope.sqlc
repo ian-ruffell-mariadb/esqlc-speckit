@@ -1,0 +1,21 @@
+/* T401 — a directive superseded mid-file. Statements before the change must
+   carry the first action; statements after must carry the second. State is
+   per-condition: setting SQLERROR must not disturb NOT FOUND. */
+#pragma SQL
+long sqlcode;
+static void first(void) {}
+static void second(void) {}
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL WHENEVER NOT FOUND GOTO :done;
+  EXEC SQL WHENEVER SQLERROR CALL :first;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+  EXEC SQL WHENEVER SQLERROR CALL :second;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+  EXEC SQL WHENEVER SQLERROR CONTINUE;
+  EXEC SQL INSERT INTO parts (part_num) VALUES (:part_num);
+done:
+  return 0;
+}
