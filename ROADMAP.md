@@ -83,10 +83,26 @@ anomalies under concurrency. It needs `SQLRM`. Positioned operations without
 stability remain viable later — Q7 is Q6-shaped and `DIV-051` already carries a
 documented choice.
 
-**Gate 5 and the full Phase 2 gate:** positioned `UPDATE`/`DELETE`, cursor
-stability, the `SQLSA`, message rendering, and the four mandatory conversion
-warnings from §2. None of the four gates proves any of that — see each one's
-non-proof section.
+**Gate 5 — the `SQLSA`**, specified in [specs/gate-5.md](specs/gate-5.md) and
+**ready to plan**. The last SQL/MP structure, and the half of the structures
+work Gate 4 left: the `SQLCA` had no published layout to conform to, and the
+`SQLSA` has two.
+
+It became scopeable when 005 Q2 resolved. The spec's original assessment — that
+the structures could not be built byte-exactly from the manual alone — was
+wrong for the `SQLSA`: §9 pp.9-15..9-16 publish both declarations, and the
+arithmetic lands on 838 and 1790 exactly under packed alignment, which is
+itself the proof that the inferred layout is the real one.
+
+It is chosen over positioned operations for the same reason Gate 4 was: this
+needs no `SQLRM` and they still do.
+
+**The full Phase 2 gate** additionally needs positioned `UPDATE`/`DELETE`,
+cursor stability, message rendering, and the four mandatory conversion warnings
+from §2. None of the five gates proves any of that — see each one's non-proof
+section. Three of the four are blocked on `SQLRM`, which is now the single
+highest-leverage thing outstanding on the project: one document unblocks 003
+Q1/Q2, 004 Q2/Q3, and `DIV-042` together.
 
 004 and 005 are concurrent and mutually dependent — cursor tests need `sqlcode`,
 and `SQLSA` statistics need cursor operations to populate them. Run them as one
