@@ -2,7 +2,16 @@
 
 One row per manual topic. `Owner` is the feature responsible; `Reqs` fills in as
 specs are written; `Status` is `—` (unclaimed), `spec` (requirements written),
-`planned`, `tested`, or `done`.
+`planned`, **`partial`**, `tested`, or `done`.
+
+**`partial` means a gate slice exercised part of the topic, not all of it.** It
+exists because four vertical slices have deliberately covered corners of many
+topics — a slice proves the spine, never the breadth. Marking those `tested`
+would overstate coverage, and leaving them `spec` understates it. Where a row is
+`partial`, the gap is named.
+
+Coverage as of Gate 4 (2026-09-01): Gate 1 insert · Gate 2 retrieval ·
+Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA.
 
 `/speckit.analyze` fails if any topic is owned by two features or by none.
 
@@ -16,20 +25,20 @@ specs are written; `Status` is `—` (unclaimed), `spec` (requirements written),
 
 | Topic | Owner | Reqs | Status |
 |---|---|---|---|
-| Declare section syntax and placement | 002 | | spec |
-| Host variable naming rules | 002 | | spec |
-| SQL↔C character type mapping (Table 2-1) | 002 | | spec |
-| SQL↔C numeric/date-time type mapping (Table 2-2) | 002 | | spec |
-| Data conversion and warning conditions | 002 | | spec |
+| Declare section syntax and placement | 002 | G1 | tested |
+| Host variable naming rules | 002 | G1 | tested |
+| SQL↔C character type mapping (Table 2-1) | 002 | G1: char[] only; no CHARACTER SET | partial |
+| SQL↔C numeric/date-time type mapping (Table 2-2) | 002 | G1: 16-bit only; no decimal/float/date-time | partial |
+| Data conversion and warning conditions | 002 | G2: cross-family refused; warnings never fired (DIV-042) | partial |
 | `CAST` in dynamic SQL | 007 | | spec |
-| Host variable reference syntax, `INDICATOR`, `TYPE AS` | 002 | | spec |
-| Fixed-length character rules (null terminator, blank padding) | 002 | | spec |
+| Host variable reference syntax, `INDICATOR`, `TYPE AS` | 002 | G1/G2: refs + INDICATOR; no TYPE AS | partial |
+| Fixed-length character rules (null terminator, blank padding) | 002 | G1 insert-side, G2 retrieval-side | tested |
 | Variable-length character (`VARCHAR`) struct form | 002 | | spec |
 | Structures as host variables | 002 | | spec |
 | Decimal data types and conversion routines | 002 | | spec |
 | Fixed-point types, `SETSCALE`, C `fixed` | 002 | | spec |
 | Date-time and INTERVAL host variables | 002 | | spec |
-| Indicator variables for null values | 002 | | spec |
+| Indicator variables for null values | 002 | G2 | tested |
 | `INVOKE` directive and generated structures | 006 | | spec |
 | `INVOKE` with indicator variables | 006 | | spec |
 | `INVOKE` with SQLCI | 008 | | spec |
@@ -39,15 +48,15 @@ specs are written; `Status` is `—` (unclaimed), `spec` (requirements written),
 
 | Topic | Owner | Reqs | Status |
 |---|---|---|---|
-| `EXEC SQL` embedding form and coding rules | 001 | | spec |
-| Placement classes | 001 | | spec |
-| `SQL` pragma and its options | 001 | | spec |
+| `EXEC SQL` embedding form and coding rules | 001 | G1 | tested |
+| Placement classes | 001 | G1, G4 (PosClass::Any) | tested |
+| `SQL` pragma and its options | 001 | G1: bare pragma; option set frozen, untested | partial |
 | `SQLMEM` pragma | 008 | | spec |
-| Statement inventory (Table 3-1) — dispatch | 001 | | spec |
+| Statement inventory (Table 3-1) — dispatch | 001 | G1-G4 via ESQLC-1012 | tested |
 | DDL statements | 008 | | spec |
 | DCL statements (`CONTROL *`, `LOCK`/`UNLOCK TABLE`, `FREE RESOURCES`) | 008 | | spec |
 | DSL statements (`GET *`) | 008 | | spec |
-| Transaction control (`BEGIN`/`COMMIT`/`ROLLBACK WORK`) | 003 | | spec |
+| Transaction control (`BEGIN`/`COMMIT`/`ROLLBACK WORK`) | 003 | G1: shape only; semantics open (003 Q1/Q2) | partial |
 
 ## Section 4 — Data Retrieval and Modification
 
@@ -55,17 +64,17 @@ specs are written; `Status` is `—` (unclaimed), `spec` (requirements written),
 |---|---|---|---|
 | Opening/closing tables and views | 003 | | spec |
 | SQL error 8204 (lost open) and recovery | 008 | | spec |
-| Single-row `SELECT` | 004 | | spec |
+| Single-row `SELECT` | 004 | G2 | tested |
 | Multirow `SELECT` | 004 | | spec |
-| `INSERT` (incl. nulls, timestamps) | 004 | | spec |
+| `INSERT` (incl. nulls, timestamps) | 004 | G1: plain insert; no nulls or timestamps | partial |
 | `UPDATE` (single, multiple, null columns) | 004 | | spec |
 | `DELETE` (single, multiple) | 004 | | spec |
-| Cursor lifecycle and steps | 004 | | spec |
+| Cursor lifecycle and steps | 004 | G3 read-only | tested |
 | PAID requirements per statement | 008 | | spec |
-| Cursor position rules (Table 4-2) | 004 | | spec |
+| Cursor position rules (Table 4-2) | 004 | G3: specified rows only; 004 Q6/Q7 open | partial |
 | Cursor stability | 004 | | spec |
 | VSBB | 008 | | spec |
-| `DECLARE CURSOR` / `OPEN` / `FETCH` / `CLOSE` | 004 | | spec |
+| `DECLARE CURSOR` / `OPEN` / `FETCH` / `CLOSE` | 004 | G3 | tested |
 | Cursor `UPDATE` / `DELETE` | 004 | | spec |
 | Foreign cursors | 008 | | spec |
 
@@ -76,8 +85,8 @@ specs are written; `Status` is `—` (unclaimed), `spec` (requirements written),
 | `cextdecs` header dependency | 008 | | spec |
 | SQL message file | 005 | | spec |
 | `SQLCADISPLAY` | 005 | | spec |
-| `SQLCAFSCODE` | 005 | | spec |
-| `SQLCAGETINFOLIST` (+ error and item codes) | 005 | | spec |
+| `SQLCAFSCODE` | 005 | G4 | tested |
+| `SQLCAGETINFOLIST` (+ error and item codes) | 005 | G4: numeric items only | partial |
 | `SQLCATOBUFFER` | 005 | | spec |
 | `SQLSADISPLAY` | 005 | | spec |
 | `SQLGETCATALOGVERSION` / `OBJECTVERSION` / `SYSTEMVERSION` | 008 | | spec |
@@ -126,12 +135,12 @@ specs are written; `Status` is `—` (unclaimed), `spec` (requirements written),
 | Topic | Owner | Reqs | Status |
 |---|---|---|---|
 | `INCLUDE STRUCTURES` and version selection | 005 | | spec |
-| Default-to-version-2 behaviour and message | 005 | | spec |
+| Default-to-version-2 behaviour and message | 005 | G4 | tested |
 | C compiler version check / error 11203 | 005 | | spec |
 | Sharing structures (`EXTERNAL`) | 005 | | spec |
-| `sqlcode` semantics | 005 | | spec |
-| `WHENEVER` directive, actions, precedence | 005 | | spec |
-| `SQLCA` declaration and access | 005 | | spec |
+| `sqlcode` semantics | 005 | G1-G4 | tested |
+| `WHENEVER` directive, actions, precedence | 005 | G4: SQLWARNING never fired (DIV-042) | partial |
+| `SQLCA` declaration and access | 005 | G4: private layout, accessor-only (DIV-041) | partial |
 | `SQLSA` declaration, reset semantics, fields | 005 | | spec |
 
 ## Section 10 — Dynamic SQL

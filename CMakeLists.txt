@@ -101,6 +101,13 @@ add_test(NAME diag_registry
 add_test(NAME streaming_guard
          COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/streaming_guard.sh)
 
+# Principle I makes the manual the contract, so a citation pointing at the
+# wrong page is worse than none — it looks like evidence. Skips when manual/ is
+# absent, which is the CI case: the PDF is third-party copyright and gitignored.
+add_test(NAME citation_check
+         COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/harness/citation_check.py)
+set_tests_properties(citation_check PROPERTIES SKIP_RETURN_CODE 77)
+
 # Tier 2 needs a live server. It skips rather than fails when none is
 # reachable, so NFR-001.2 (Tier 1 runs with no MariaDB) still holds.
 if(TARGET esqlc)
