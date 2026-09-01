@@ -148,6 +148,30 @@ the name is already the source language's identifier for the thing.
 distinguishes the `OPEN` inputs from the `FETCH` outputs, and `ind_addr` carries
 its Gate 2 meaning.
 
+## Diagnostic area — added by Gate 4
+
+```c
+/* Register the program's SQLCA so the runtime populates it after each
+   statement. Emitted by INCLUDE SQLCA. `len` must equal SQLCA_LEN; a mismatch
+   means program and runtime disagree about the structure, which is an error
+   rather than something to truncate into. */
+int esqlc_sqlca_register(void *sqlca, size_t len);
+
+/* SQLCAGETINFOLIST: copy a caller-selected subset of the diagnostic area into
+   `buf`, in item order. Returns the documented 8510-8517 codes on misuse. */
+int esqlc_sqlca_getinfolist(const int *items, int n_items,
+                            void *buf, size_t buf_len);
+```
+
+`SQLCAFSCODE` needs no new entry point; it maps onto `esqlc_fs_detail`.
+
+> **Why registration rather than runtime-held state.** `DIV-041` makes the SQLCA
+> layout private, which invites an accessor-reads-runtime-state design. That would
+> silently break the two things §9 p.9-3 says programs do with the structure —
+> copy it using `SQLCA_LEN`, and share it `EXTERNAL` across modules — because
+> every saved copy would be an empty 430-byte husk. Writing into the program's
+> own storage keeps the layout private *and* the data where the manual says it is.
+
 ## Statement execution — outline
 
 Not frozen. Recorded to fix the shape the preprocessor emits against, so

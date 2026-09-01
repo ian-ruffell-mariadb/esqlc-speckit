@@ -66,11 +66,27 @@ points; a cursor is long-lived state spanning three statements, which the
 one-shot `esqlc_stmt_exec` cannot express. Gate 2's plan predicted this, and it
 arrives where predicted.
 
-**Gate 4 and the full Phase 2 gate:** positioned `UPDATE`/`DELETE` (where
-`DIV-051` and 004 Q7 live), cursor stability, every §9 diagnostic path including
-`WHENEVER` precedence (NOT FOUND, then SQLERROR, then SQLWARNING), and the four
-mandatory conversion warnings from §2. None of the three gates proves any of
-that — see each one's non-proof section.
+**Gate 4 — `WHENEVER` and the SQLCA**, specified in
+[specs/gate-4.md](specs/gate-4.md) and **ready to plan**. It finally attacks the
+structures, which all three previous non-proof sections named as the project's
+largest untested exposure.
+
+Two things are new in kind: `WHENEVER` is the first *generated control flow*,
+and the `SQLCA` is the first SQL/MP structure the project generates — layout is
+API, since programs allocate copies with `SQLCA_LEN` and share them `EXTERNAL`.
+
+**It is deliberately not positioned operations.** That slice is not cleanly
+scopeable: 004 Q3 (cursor stability) cannot be narrowed the way Gate 3 narrowed
+Q6. Q6 had a reading that is obviously safe; isolation levels have none, because
+the question is what *other sessions* observe, and guessing there produces silent
+anomalies under concurrency. It needs `SQLRM`. Positioned operations without
+stability remain viable later — Q7 is Q6-shaped and `DIV-051` already carries a
+documented choice.
+
+**Gate 5 and the full Phase 2 gate:** positioned `UPDATE`/`DELETE`, cursor
+stability, the `SQLSA`, message rendering, and the four mandatory conversion
+warnings from §2. None of the four gates proves any of that — see each one's
+non-proof section.
 
 004 and 005 are concurrent and mutually dependent — cursor tests need `sqlcode`,
 and `SQLSA` statistics need cursor operations to populate them. Run them as one
