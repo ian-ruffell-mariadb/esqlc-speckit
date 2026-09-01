@@ -97,6 +97,30 @@ itself the proof that the inferred layout is the real one.
 It is chosen over positioned operations for the same reason Gate 4 was: this
 needs no `SQLRM` and they still do.
 
+**Gate 6 — searched `UPDATE` and `DELETE`**, specified in
+[specs/gate-6.md](specs/gate-6.md) and **ready to plan**. The smallest slice so
+far, and the point where the subset stops being a demonstration: insert,
+retrieve, iterate and modify.
+
+Its value is not the two keywords, which the existing statement path mostly
+already handles. It is that **input indicators have never been driven** — Gate 2
+proved reading a null, never setting one — that a zero-row `UPDATE` is a
+succeeded statement reporting `sqlcode` 100, which is the shape a runtime gets
+silently wrong; and that it confronts the `table_name` gap Gate 5's report
+raised rather than leaving it unowned for a third gate.
+
+That gap turns out to have an answer that is not parsing. The table name sits at
+a fixed position after the leading keyword in all three DML forms, which makes
+it a **landmark** — the same same-pass position capture `INTO` and `FROM`
+already use, and the same operation `name_after_verb` performs for cursor names.
+Recorded as SD-9, provisional, with the forms it cannot read required to reach
+the sentinel rather than a wrong name.
+
+**Gate 7 — host variable type breadth** is the larger prize and equally
+unblocked: `VARCHAR`, the integer widths including 64-bit, float and double,
+date-time as `char`. Decimal and the character-set family stay out, on 002
+Q2/Q3 and Q4. It is second only because Gate 6 is nearly free.
+
 **The full Phase 2 gate** additionally needs positioned `UPDATE`/`DELETE`,
 cursor stability, message rendering, and the four mandatory conversion warnings
 from §2. None of the five gates proves any of that — see each one's non-proof
