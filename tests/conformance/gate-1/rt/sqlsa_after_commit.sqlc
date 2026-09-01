@@ -1,0 +1,32 @@
+/* T517 — SQLSA is undefined after transaction control, and must not be left
+   accidentally meaningful (FR-005.19). The failure this guards against is a
+   program reading plausible statistics that belong to the previous statement. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  EXEC SQL DECLARE c5 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
+  EXEC SQL OPEN c5;
+  EXEC SQL FETCH c5 INTO :part_num, :part_desc;
+  if (sqlcode < 0) { printf("FAIL: fetch sqlcode=%ld\n", sqlcode); return 1; }
+  if (sqlsa.u.dml.num_tables != 1) { printf("FAIL: precondition, num_tables=%d\n",
+                                            (int)sqlsa.u.dml.num_tables); return 1; }
+  EXEC SQL CLOSE c5;
+  /* sqlcode is deliberately not consulted after COMMIT WORK (§9 p.9-13). */
+  EXEC SQL COMMIT WORK;
+  if (sqlsa.u.dml.num_tables != -1) {
+    printf("FAIL: after COMMIT num_tables=%d, want the sentinel\n",
+           (int)sqlsa.u.dml.num_tables);
+    return 1;
+  }
+  printf("undefined-after-commit ok\n");
+  return 0;
+}

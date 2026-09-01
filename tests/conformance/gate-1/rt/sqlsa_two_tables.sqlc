@@ -1,0 +1,42 @@
+/* T515 — a two-table join: num_tables is 2 and stats[1] is populated
+   (FR-005.22). Exercising stats[0] alone cannot tell an array from a struct. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19]; char supp_name[19];
+EXEC SQL END DECLARE SECTION;
+
+static int names_cover(const char *a, const char *b) {
+  return (strncmp(a, "parts", 5) == 0 && strncmp(b, "suppliers", 9) == 0)
+      || (strncmp(a, "suppliers", 9) == 0 && strncmp(b, "parts", 5) == 0);
+}
+
+int main(void) {
+  int rows = 0, seen2 = 0;
+  EXEC SQL BEGIN WORK;
+  EXEC SQL DECLARE c3 CURSOR FOR
+      SELECT p.part_num, p.part_desc, s.supp_name
+      FROM parts p JOIN suppliers s ON p.part_num = s.part_num
+      ORDER BY p.part_num;
+  EXEC SQL OPEN c3;
+  for (;;) {
+    EXEC SQL FETCH c3 INTO :part_num, :part_desc, :supp_name;
+    if (sqlcode == 100) break;
+    if (sqlcode < 0) { printf("FAIL: fetch sqlcode=%ld\n", sqlcode); return 1; }
+    rows++;
+    if (sqlsa.u.dml.num_tables == 2 &&
+        names_cover(sqlsa.u.dml.stats[0].table_name,
+                    sqlsa.u.dml.stats[1].table_name)) seen2 = 1;
+  }
+  EXEC SQL CLOSE c3;
+  EXEC SQL COMMIT WORK;
+  printf("rows=%d num_tables=%d t0=%.18s t1=%.18s\n", rows,
+         (int)sqlsa.u.dml.num_tables,
+         sqlsa.u.dml.stats[0].table_name, sqlsa.u.dml.stats[1].table_name);
+  return (rows > 0 && seen2) ? 0 : 1;
+}

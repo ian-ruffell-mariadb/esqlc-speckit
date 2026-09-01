@@ -1,0 +1,8 @@
+/* T519 — SQLSA VERSION CURRENT is out of slice. ESQLC-5007 is the correct
+   refusal rather than a generic ESQLC-1012: the registered condition is
+   "VERSION CURRENT without a reachable SQLGETSYSTEMVERSION", and there is
+   never a reachable one here. */
+#pragma SQL
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION CURRENT;
+EXEC SQL INCLUDE SQLSA;
+int main(void) { return 0; }

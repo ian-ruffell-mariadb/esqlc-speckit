@@ -225,5 +225,29 @@ seed
 run_case sqlca_misuse "$RT/negative/sqlca_misuse.sqlc" 0 && \
   ok "sqlca_misuse: 8511 / 8514 / 8515 (FR-005.30)"
 
+# --- Gate 5 (T542-T547) SQLSA ---------------------------------------------
+mdb < "$FIX/seed.sql" >/dev/null
+
+run_case sqlsa_cursor_stats "$RT/sqlsa_cursor_stats.sqlc" 0 \
+  && ok "sqlsa_cursor_stats (FR-005.17)"
+
+# The accumulator idiom of §9 p.9-13. A missing per-statement reset makes the
+# accumulated total overshoot the row count, so this is the one shape that
+# catches a stale SQLSA instead of reading a plausible number.
+run_case sqlsa_accumulate "$RT/sqlsa_accumulate.sqlc" 0 \
+  && ok "sqlsa_accumulate — reset per FETCH (FR-005.20)"
+
+run_case sqlsa_two_tables "$RT/sqlsa_two_tables.sqlc" 0 \
+  && ok "sqlsa_two_tables — num_tables 2, stats[1] (FR-005.22)"
+
+run_case sqlsa_sentinels "$RT/sqlsa_sentinels.sqlc" 0 \
+  && ok "sqlsa_sentinels — never zero, SD-7 (FR-005.25)"
+
+run_case sqlsa_sentinel_char "$RT/sqlsa_sentinel_char.sqlc" 0 \
+  && ok "sqlsa_sentinel_char — SD-8 (FR-005.25)"
+
+run_case sqlsa_after_commit "$RT/sqlsa_after_commit.sqlc" 0 \
+  && ok "sqlsa_after_commit — undefined stays undefined (FR-005.19)"
+
 echo "tier2: $pass passed, $fail failed"
 exit $(( fail > 0 ))

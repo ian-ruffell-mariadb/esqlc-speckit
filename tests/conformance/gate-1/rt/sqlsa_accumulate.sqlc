@@ -1,0 +1,36 @@
+/* T514 — the accumulator idiom of §9 p.9-13, and the only fixture shape that
+   detects a missing per-statement reset (FR-005.20).
+
+   If SQLSA is not reset before each FETCH, the per-fetch records_used stays at
+   its previous value and the accumulated total overshoots the row count. A
+   test that read one field after one FETCH would see a plausible number and
+   pass. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  long acc_used = 0;
+  int  rows = 0;
+  EXEC SQL BEGIN WORK;
+  EXEC SQL DECLARE c2 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
+  EXEC SQL OPEN c2;
+  for (;;) {
+    EXEC SQL FETCH c2 INTO :part_num, :part_desc;
+    if (sqlcode == 100) break;
+    if (sqlcode < 0) { printf("FAIL: fetch sqlcode=%ld\n", sqlcode); return 1; }
+    rows++;
+    acc_used += sqlsa.u.dml.stats[0].records_used;
+  }
+  EXEC SQL CLOSE c2;
+  EXEC SQL COMMIT WORK;
+  printf("rows=%d acc_used=%ld\n", rows, acc_used);
+  /* One row accounted per FETCH. A stale SQLSA makes this overshoot. */
+  return (rows > 0 && acc_used == (long)rows) ? 0 : 1;
+}

@@ -272,6 +272,72 @@ def assert_sqlca(out: str) -> None:
           "the SQLCA must be registered, or the runtime writes nowhere")
 
 
+def assert_sqlsa_sizes(out: str) -> None:
+    """T530 — both published totals, exactly, and the packing that reaches them.
+
+    v300 measures 840 unpacked against a published 838, so the packing is not
+    optional at either version. FR-005.27 documents the pragma for the four
+    *_R330 types only, which understates it.
+    """
+    check("FR-005.16", "#define SQLSA_LEN 838" in out,
+          "SQLSA_LEN must be 838 at version 300")
+    check("FR-005.16", "#define SQLSA_LEN_R330 1790" in out,
+          "SQLSA_LEN_R330 must be 1790")
+    check("FR-005.16", '#define SQLSA_EYE_CATCHER "SA"' in out,
+          "the eye-catcher must be SA")
+    check("FR-005.16", "sizeof(struct SQLSA_TYPE) == SQLSA_LEN" in out,
+          "the 838-byte total must be statically asserted")
+    check("FR-005.16", "sizeof(struct SQLSA_TYPE_R330) == SQLSA_LEN_R330" in out,
+          "the 1790-byte total must be statically asserted")
+    check("FR-005.27", "__attribute__((packed))" in out or "#pragma pack" in out,
+          "both layouts need packing; 838 and 1790 are unreachable without it")
+    # Both type declarations exist regardless of the selected version: the
+    # manual names them distinctly and FR-005.26 has VERSION CURRENT emit both.
+    check("FR-005.16", "struct SQLSA_TYPE " in out and "struct SQLSA_TYPE_R330 " in out,
+          "both version families must be declared")
+
+
+def assert_sqlsa_layout(out: str) -> None:
+    """T531-T535 — the union, the widths, VSBB, and fixed-width integers."""
+    check("FR-005.21a",
+          "offsetof(struct SQLSA_TYPE, u.dml) == offsetof(struct SQLSA_TYPE, u.prepare)"
+          in out.replace("\n", " ").replace("  ", " "),
+          "dml and prepare are arms of a union, not coexisting members")
+    check("FR-005.21b", "int32_t records_accessed" in out,
+          "v300 counters are 32-bit")
+    check("FR-005.21b", "int64_t records_accessed" in out,
+          "v330 counters are 64-bit")
+    check("FR-005.21b", "int16_t waits" in out and "int32_t waits" in out,
+          "waits widens 16->32 across the version boundary")
+    check("FR-005.21c", "sqlsa_reserved" in out,
+          "v300 has sqlsa_reserved where v330 has the VSBB flags")
+    check("FR-005.21c", "vsbb_write" in out and "vsbb_flushed" in out,
+          "v330 carries the VSBB flags")
+    check("FR-005.23", "#define SQLSA_VSBB_TRUE (-1)" in out,
+          "the VSBB flags use -1 for true")
+    check("FR-005.23", "#define SQLSA_VSBB_FALSE 0" in out,
+          "the VSBB flags use 0 for false")
+    # T535. A native `long` is 4 bytes on ILP32 and 8 on LP64, so the published
+    # layout only holds by accident on one of them. sizeof alone would not
+    # catch this on the machine where it is wrong.
+    body = out[out.find("SQLSA_TYPE"):] if "SQLSA_TYPE" in out else ""
+    check("FR-005.21",
+          not re.search(r"^\s*(unsigned\s+)?long\s+\w+\s*(\[|;)", body, re.M),
+          "every integer field must be a fixed-width type, never a native long")
+
+
+def assert_sqlsa_emission(out: str) -> None:
+    """T536, T540, T541 — registration, ABI-only calls, and the sync markers."""
+    check("FR-005.17", "esqlc_sqlsa_register(&sqlsa, SQLSA_LEN, 300)" in out,
+          "the SQLSA must be registered, or the runtime writes nowhere")
+    check("NFR-005.1", "--8<-- esqlc sqlsa layout begin --8<--" in out
+          and "--8<-- esqlc sqlsa layout end --8<--" in out,
+          "the layout block must be bracketed so sqlsa_layout_sync can lift it")
+    called = {m for m in CALL_RE.findall(out)}
+    leaked = {c for c in called if c.startswith(("mysql_", "mariadb_"))}
+    check("FR-003.1", not leaked, f"emitted C called MariaDB directly: {leaked}")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: spec_assertions.py <esqlcpp>", file=sys.stderr)
@@ -302,6 +368,11 @@ def main() -> int:
     out = emit(pp, FIX / "rt" / "whenever_flow.sqlc")
     if out:
         assert_sqlca(out)
+    out = emit(pp, FIX / "sqlsa_sizes.sqlc")
+    if out:
+        assert_sqlsa_sizes(out)
+        assert_sqlsa_layout(out)
+        assert_sqlsa_emission(out)
 
     for f in failures:
         print(f"FAIL {f}")

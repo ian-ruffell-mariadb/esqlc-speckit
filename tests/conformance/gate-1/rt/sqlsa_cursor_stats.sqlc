@@ -1,0 +1,38 @@
+/* T513 — the slice's main fixture. SQLSA is populated after OPEN, FETCH and
+   CLOSE for a cursor whose DECLARE carries a SELECT (FR-005.17). */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  int rows = 0;
+  EXEC SQL BEGIN WORK;
+  EXEC SQL DECLARE c1 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
+  EXEC SQL OPEN c1;
+  if (sqlcode < 0) { printf("FAIL: open sqlcode=%ld\n", sqlcode); return 1; }
+  /* After OPEN the statement has run, so the table is named. */
+  if (sqlsa.u.dml.num_tables != 1) {
+    printf("FAIL: after OPEN num_tables=%d want 1\n", (int)sqlsa.u.dml.num_tables);
+    return 1;
+  }
+  for (;;) {
+    EXEC SQL FETCH c1 INTO :part_num, :part_desc;
+    if (sqlcode == 100) break;
+    if (sqlcode < 0) { printf("FAIL: fetch sqlcode=%ld\n", sqlcode); return 1; }
+    rows++;
+    if (sqlsa.u.dml.num_tables != 1) {
+      printf("FAIL: after FETCH num_tables=%d want 1\n", (int)sqlsa.u.dml.num_tables);
+      return 1;
+    }
+  }
+  EXEC SQL CLOSE c1;
+  EXEC SQL COMMIT WORK;
+  printf("rows=%d table=%.18s\n", rows, sqlsa.u.dml.stats[0].table_name);
+  return rows > 0 ? 0 : 1;
+}

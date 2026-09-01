@@ -1,0 +1,5 @@
+/* T511 — union arms, per-family counter widths, VSBB only at v330. */
+#pragma SQL
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 330;
+EXEC SQL INCLUDE SQLSA;
+int main(void) { return 0; }
