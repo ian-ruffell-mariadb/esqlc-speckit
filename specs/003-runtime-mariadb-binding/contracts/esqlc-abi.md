@@ -20,7 +20,8 @@ absent entry point must add it here in the same change.
 | Transaction control | **shape decided, semantics open** | 003 Q1, Q2 — `SQLRM` |
 | Statement execution and binding | outline only | 002 conversion rules |
 | Cursors | not started | feature 004, incl. Q6/Q7 |
-| Structures (SQLCA/SQLSA) | not started | feature 005 |
+| Structures — `SQLCA` | **decided** | — (Gate 4; layout private, `DIV-041`) |
+| Structures — `SQLSA` | **shape decided, population partial** | `records_accessed` source — `DIV-011` |
 | Descriptors (SQLDA) | not started | feature 007, `DIV-040` |
 
 ## Conventions
@@ -173,6 +174,33 @@ int esqlc_sqlca_getinfolist(const void *sqlca, int error_index,
 ```
 
 `SQLCAFSCODE` needs no new entry point; it maps onto `esqlc_fs_detail`.
+
+## Statistics area — added by Gate 5
+
+```c
+/* Register the program's SQLSA so the runtime populates it after each
+   statement. Emitted by INCLUDE SQLSA. `version` is 300 or 330 and `len` must
+   equal that version's SQLSA_LEN — two published layouts mean the runtime
+   cannot infer which one it was handed from the pointer alone. */
+int esqlc_sqlsa_register(void *sqlsa, size_t len, int version);
+```
+
+No accessors, and that is the difference from the `SQLCA`. `DIV-041` made the
+`SQLCA` layout private because the manual publishes none, so its fields could
+only be reached through `esqlc_sqlca_getinfolist`. The `SQLSA` layout **is**
+published, in §9 pp.9-15..9-16, so programs index its fields by name and an
+accessor would force a source change Principle II forbids.
+
+Registration rather than runtime-held state, for Gate 4's reason reinforced by
+§9 p.9-13: the manual tells programs to save values immediately after a
+statement, and to declare more than one `SQLSA` where needed. Both idioms
+require the data to live in the program's own storage.
+
+> **The runtime writes this structure by offset**, since it cannot include
+> preprocessor output. That makes the layout encoded twice — once in the
+> emitter, once in the runtime — which is the drift Principle VI exists to
+> prevent. `tests/harness/sqlsa_layout_sync.sh` compares the two and is part of
+> the contract in practice, if not in signature.
 
 > **Why registration rather than runtime-held state.** `DIV-041` makes the SQLCA
 > layout private, which invites an accessor-reads-runtime-state design. That would

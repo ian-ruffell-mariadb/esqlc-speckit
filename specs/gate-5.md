@@ -106,6 +106,14 @@ SD-1, SD-2, SD-3 carry forward, still **provisional**. One new decision.
   stays out-of-domain at 64. It also matches the one sentinel convention the
   manual does publish, `-1` for true in `vsbb_write`. **Provisional** — the
   manual states no sentinel for these fields, and `SQLRM` may name one.
+- **SD-8 (new, raised by planning)** — an unmappable **character** field is
+  filled with `?` to its full declared width. Also narrows 005 Q3, which SD-7
+  answered only for numeric fields. Surfaced by `table_name`, which has no
+  source on the DML path: result-set metadata supplies it for a `SELECT`, and
+  `INSERT`/`UPDATE`/`DELETE` return no metadata to read it from. Chosen because
+  `?` is visibly not a table name, is distinguishable from both an empty string
+  and a blank-padded one, and is safe to print — which a high-bit fill would not
+  be. **Provisional**, on the same footing as SD-7.
 
 ## Design questions this slice must settle
 
