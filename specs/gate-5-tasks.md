@@ -212,3 +212,101 @@ The slice's ten, plus:
 12. Every mutation in Phase D′ fails its named test, with a rebuilt binary.
 13. `docs/traceability.md` moved off `spec` for this slice's rows.
 14. `DIV-011` accepted, with its **Detection** field filled.
+
+---
+
+## Implementation report — 2026-09-01
+
+All 65 tasks complete. 10/10 ctest; Tier 1 66 assertions and 19 negatives clean;
+Tier 2 31 cases; `sqlsa_layout_sync` 36 offsets agreeing across both families.
+
+### T602 — finding against 005: FR-005.27 understates its own requirement
+
+The requirement records the alignment pragma for the four `*_R330` types, which
+reads as though v300 needs none. Measured, both families need it:
+
+| | natural | packed | published |
+|---|---|---|---|
+| v300 | 840 | **838** | 838 |
+| v330 | 1864 | **1790** | 1790 |
+
+v300 misses by exactly the two bytes inserted after `num_tables` before the
+4-aligned `stats[]`. FR-005.27 should say both families, not the `*_R330` types.
+
+A second, larger point the same exercise surfaced: **the manual's `long` is
+32-bit TNS.** Emitting the published declarations verbatim on an LP64 host gives
+an 8-byte `long` and a structure nowhere near 838. Every integer field is
+emitted as an explicit `intN_t`. `T535` asserts this directly rather than via
+`sizeof`, because a native `long` yields a correct layout on ILP32 and a wrong
+one on LP64 — `sizeof` would not catch it on the machine where it is wrong.
+
+### T605 — `records_accessed` found no honest source
+
+Rows-examined is reachable only through `performance_schema` or the slow log,
+neither of which is a synchronous per-connection read. It is a sentinel, and
+`DIV-011` now says so. As built, `stats[]` is more sentinel than statistic:
+`num_tables`, `table_name` and `records_used` are real on the cursor path;
+`records_accessed`, `disc_reads`, `messages`, `message_bytes`, `waits` and
+`escalations` are not. That is the documented outcome the plan anticipated, not
+a failure — but it is worth stating plainly rather than leaving to be discovered.
+
+### T603 — `ESQLC-5009` and `ESQLC-5010` deliberately unimplemented
+
+Both require dataflow over the host program to detect a *read* of the structure.
+The preprocessor has no such capability and should not grow one for two
+diagnostics, one of which defaults to `ignore`. The runtime stamping achieves
+the same protection where it matters: after a statement that leaves the SQLSA
+undefined, every field reads its sentinel, so a program that reads there gets a
+detectable "not measured" rather than a plausible number. Their absence is a
+decision, recorded here so it is not later mistaken for an oversight.
+
+### T604 — slice decisions as built
+
+SD-1, SD-2, SD-3 carried unchanged. SD-7 held: `-1` in the field's own width
+needed no per-width table, because every field it covers counts something
+non-negative. SD-8 was raised during planning and proved necessary in
+implementation on the DML path exactly as predicted.
+
+One correction to SD-7's scope as written: the **VSBB flags are booleans, not
+counts**, so they carry `SQLSA_VSBB_FALSE` rather than a sentinel — `-1` already
+means *true* there (FR-005.23). Applying SD-7 literally would have made every
+VSBB flag read as true. Recorded rather than silently special-cased.
+
+### Three defects found by the tests, not by review
+
+**A surviving mutation.** `sqlsa_accumulate` was documented as "the only shape
+that detects a missing reset". It was not: removing the per-`FETCH` reset left
+it passing, because `populate()` overwrites `records_used` on every fetch
+regardless. The guard was decorative for the property it claimed to hold.
+
+What actually detects it is the **terminating** `FETCH` — a statement, so it
+resets, that retrieves nothing, so it populates nothing. Without the reset it
+leaves the last row's statistics behind, attributed to a fetch that found no
+row. The fixture now asserts sentinels after the loop, and the mutation is
+caught. This is the whole argument for mutation testing: the assertion looked
+load-bearing and was not.
+
+**Registration emitted at file scope.** The pending registration call flushed at
+the first *construct*, and a `DECLARE CURSOR` is a declaration that emits no
+executable code. With a cursor between the `INCLUDE` and the first statement the
+call landed at file scope and the unit would not compile. Latent since Gate 4 —
+the SQLCA had the same flaw — and only exposed because Gate 5's fixtures put a
+cursor there. Now gated on executable position.
+
+**`ESQLC-5006` firing falsely.** Gate 4 emitted the default-to-version-2 message
+unconditionally, which was correct only because `INCLUDE STRUCTURES` always
+failed, so the message could never be wrong. Making version selection work made
+it wrong: every program that correctly declared its version was told it had not.
+Now conditional on the directive being absent, as FR-005.10 always said.
+
+### Not proved, as scoped
+
+v330 is asserted but never populated. The 16-table cap is untouched —
+`num_tables` reaches 2. The whole `prepare` arm is layout-only. `SQLSADISPLAY`
+is out, so no statistic is rendered. Cursor stability remains blocked on 004 Q3
+and `SQLRM`. Every statistic was measured single-session.
+
+`table_name` on the DML path is a real gap rather than a scoping choice:
+`INSERT`/`UPDATE`/`DELETE` return no result-set metadata, so there is no source
+short of parsing the statement, which NFR-001.1 forbids. FR-005.17 cannot be
+called done until that has an answer.

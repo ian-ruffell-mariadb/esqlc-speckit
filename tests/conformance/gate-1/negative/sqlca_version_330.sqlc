@@ -1,0 +1,5 @@
+/* T521 — version 330 exists for the SQLSA only (FR-005.9). */
+#pragma SQL
+EXEC SQL INCLUDE STRUCTURES SQLCA VERSION 330;
+EXEC SQL INCLUDE SQLCA;
+int main(void) { return 0; }

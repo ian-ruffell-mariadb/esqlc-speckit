@@ -19,7 +19,8 @@ static const Handler kHandlers[] = {
     {"INSERT",                PosClass::Exec, nullptr},
     {"WHENEVER",              PosClass::Any,  nullptr},   // Gate 4, FR-001.13
     {"INCLUDE SQLCA",         PosClass::Decl, nullptr},   // Gate 4
-    {"INCLUDE STRUCTURES",    PosClass::Decl, nullptr},   // Gate 4: ordering only
+    {"INCLUDE STRUCTURES",    PosClass::Decl, nullptr},   // Gate 5: version selection
+    {"INCLUDE SQLSA",         PosClass::Decl, nullptr},   // Gate 5
     {"SELECT",                PosClass::Exec, nullptr},   // Gate 2: single-row only
     {"DECLARE CURSOR",        PosClass::Decl, nullptr},   // Gate 3: read-only
     {"OPEN",                  PosClass::Exec, nullptr},
@@ -32,7 +33,6 @@ static const Handler kHandlers[] = {
     // own, so the dispatch table cannot see it.
     {"UPDATE",             PosClass::Exec, "004 (static DML & cursors)"},
     {"DELETE",             PosClass::Exec, "004 (static DML & cursors)"},
-    {"INCLUDE SQLSA",      PosClass::Decl, "005 (diagnostics)"},
     {"INVOKE",             PosClass::Decl, "006 (INVOKE schema generation)"},
     {"INCLUDE SQLDA",      PosClass::Decl, "007 (dynamic SQL)"},
     {"PREPARE",            PosClass::Exec, "007 (dynamic SQL)"},

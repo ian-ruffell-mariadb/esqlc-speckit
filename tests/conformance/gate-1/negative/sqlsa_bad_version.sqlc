@@ -1,0 +1,5 @@
+/* T520 — an unsupported structure version (FR-005.9), reported as SQL 11203. */
+#pragma SQL
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 301;
+EXEC SQL INCLUDE SQLSA;
+int main(void) { return 0; }

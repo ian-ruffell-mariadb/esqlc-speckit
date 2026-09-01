@@ -97,6 +97,15 @@ int  esqlc_sqlca_getinfolist(const void *sqlca, int error_index,
                              const int *items, int n_items,
                              void *buf, size_t buf_len);
 
+/* Statistics area (Gate 5). No accessors, and that is the difference from the
+ * SQLCA: DIV-041 could hide that layout because the manual publishes none, but
+ * §9 pp.9-15..9-16 publish this one, so programs index its fields by name and
+ * an accessor would force a source change Principle II forbids.
+ *
+ * `version` is 300 or 330 and `len` must equal that version's SQLSA_LEN — two
+ * published layouts mean the runtime cannot infer which it was handed. */
+int  esqlc_sqlsa_register(void *sqlsa, size_t len, int version);
+
 long esqlc_sqlcode(void);
 int  esqlc_fs_detail(long *fs_code);
 

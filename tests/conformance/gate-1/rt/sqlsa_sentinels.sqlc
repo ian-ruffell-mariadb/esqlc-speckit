@@ -1,0 +1,39 @@
+/* T516 — sentinels, never zero (FR-005.25, DIV-011).
+
+   Zero is a legitimate statistic, so a field with no MariaDB analogue must be
+   distinguishable from one that genuinely measured nothing. SD-7 gives -1 in
+   the field's own width for numeric fields; SD-8 gives '?' to full width for
+   character fields. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+/* Declaration position: a cursor DECLARE is a declaration. */
+EXEC SQL DECLARE c4 CURSOR FOR SELECT part_num, part_desc FROM parts ORDER BY part_num;
+
+int main(void) {
+  int bad = 0;
+  EXEC SQL BEGIN WORK;
+  EXEC SQL OPEN c4;
+  EXEC SQL FETCH c4 INTO :part_num, :part_desc;
+  if (sqlcode < 0) { printf("FAIL: fetch sqlcode=%ld\n", sqlcode); return 1; }
+
+  /* No NonStop message layer and no InnoDB lock escalation exist here. */
+  if (sqlsa.u.dml.stats[0].messages      != -1) { printf("FAIL messages=%ld\n",      (long)sqlsa.u.dml.stats[0].messages);      bad = 1; }
+  if (sqlsa.u.dml.stats[0].message_bytes != -1) { printf("FAIL message_bytes=%ld\n", (long)sqlsa.u.dml.stats[0].message_bytes); bad = 1; }
+  if (sqlsa.u.dml.stats[0].escalations   != -1) { printf("FAIL escalations=%d\n",    (int)sqlsa.u.dml.stats[0].escalations);    bad = 1; }
+  /* The point of the requirement: none of them may read as a real zero. */
+  if (sqlsa.u.dml.stats[0].messages == 0 || sqlsa.u.dml.stats[0].message_bytes == 0
+      || sqlsa.u.dml.stats[0].escalations == 0) { printf("FAIL: a sentinel read as zero\n"); bad = 1; }
+
+  EXEC SQL CLOSE c4;
+  EXEC SQL COMMIT WORK;
+  printf("sentinels %s\n", bad ? "BAD" : "ok");
+  return bad;
+}

@@ -45,6 +45,17 @@ void esqlc_rt_set_err_code(long code);
 /* sqlca.c */
 void esqlc_rt_sqlca_populate(long sqlcode, long fs_code, long rows);
 
+/* sqlsa.c — reset stamps every field with its sentinel and is called at the
+ * start of every statement; populate then fills only what the statement can
+ * honestly supply. A statement class that leaves the SQLSA undefined simply
+ * does not call populate, so FR-005.19 needs no separate path (Gate 5). */
+void esqlc_rt_sqlsa_reset(void);
+void esqlc_rt_sqlsa_populate(long rows_used,
+                             const char *const *tables, int n_tables);
+int  esqlc_rt_sqlsa_version(void);
+int  esqlc_rt_sqlsa_num_tables(void);
+void esqlc_rt_sqlsa_from_stmt(MYSQL_STMT *st, long rows_used);
+
 /* cursor.c */
 void esqlc_rt_cursors_release_all(void);   /* FR-003.8 */
 

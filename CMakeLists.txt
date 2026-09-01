@@ -27,6 +27,7 @@ add_executable(esqlcpp
     src/pp/dispatch.cc
     src/pp/emit.cc
     src/pp/whenever.cc
+    src/pp/sqlsa.cc
 )
 target_include_directories(esqlcpp PRIVATE src/pp)
 
@@ -59,6 +60,7 @@ if(MARIADB_CONFIG)
         src/rt/exec.c
         src/rt/cursor.c
         src/rt/sqlca.c
+        src/rt/sqlsa.c
         src/rt/diag.c
     )
     target_include_directories(esqlc PUBLIC include PRIVATE src/rt)
@@ -100,6 +102,16 @@ add_test(NAME diag_registry
 # so it is guarded structurally (Gate 3, T347).
 add_test(NAME streaming_guard
          COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/streaming_guard.sh)
+
+# The emitter and the runtime encode the SQLSA layout independently — one as a
+# C struct, one as an offset table. Add a field to one side only and the runtime
+# corrupts the program's own memory silently. This compares them (Gate 5, T523).
+if(TARGET esqlc)
+    add_test(NAME sqlsa_layout_sync
+             COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/sqlsa_layout_sync.sh
+                     $<TARGET_FILE:esqlcpp> $<TARGET_FILE:esqlc>)
+    set_tests_properties(sqlsa_layout_sync PROPERTIES SKIP_RETURN_CODE 77)
+endif()
 
 # Principle I makes the manual the contract, so a citation pointing at the
 # wrong page is worse than none — it looks like evidence. Skips when manual/ is

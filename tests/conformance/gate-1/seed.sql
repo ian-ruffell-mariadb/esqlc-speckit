@@ -7,3 +7,10 @@ INSERT INTO parts (part_num, part_desc, weight) VALUES (4103, 'WASHER, 8MM      
 INSERT INTO parts (part_num, part_desc, weight) VALUES (4104, 'BOLT, 8MM X 40    ', 95);
 INSERT INTO parts (part_num, part_desc, weight) VALUES (4105, 'SPRING WASHER, 8MM', 12);
 INSERT INTO parts (part_num, part_desc, weight) VALUES (4106, 'CAP NUT, 8MM      ', 51);
+
+-- Gate 5 (T515): supplier rows for the two-table join.
+DELETE FROM suppliers;
+INSERT INTO suppliers (part_num, supp_name) VALUES
+  (3103, 'ACME SUPPLY CO   '),
+  (3201, 'BOLT WORKS LTD   '),
+  (4102, 'COGSWELL COGS    ');

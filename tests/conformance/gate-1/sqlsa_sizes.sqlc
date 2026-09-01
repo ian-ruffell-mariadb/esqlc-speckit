@@ -1,0 +1,9 @@
+/* T510 — both SQLSA layouts in one unit, sizes asserted.
+   Both type declarations are emitted regardless of the selected version: the
+   manual names them distinctly (SQLSA_TYPE and SQLSA_TYPE_R330) and FR-005.26
+   requires VERSION CURRENT to generate both, so emitting both types is the
+   manual's own model. Only the *variable* takes the selected version. */
+#pragma SQL
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLSA;
+int main(void) { return 0; }

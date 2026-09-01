@@ -1,4 +1,0 @@
-#pragma SQL
-long sqlcode;
-EXEC SQL INCLUDE SQLSA;
-int main(void) { return 0; }

@@ -128,7 +128,7 @@ be re-expressed as MariaDB grants; there is no mechanical translation.
 
 ## DIV-011 — SQLSA statistics without a NonStop executor
 
-**Status:** proposed · **Feature:** 005 · **Citation:** `[SQLPM/C §9 pp.9-17..9-18]`
+**Status:** accepted · **Feature:** 005 · **Citation:** `[SQLPM/C §9 pp.9-17..9-18]`
 
 **NonStop:** `stats[]` reports `disc_reads`, `messages`, `message_bytes`,
 `waits`, `escalations`, `vsbb_write`, `vsbb_flushed`, and (v330+)
@@ -143,7 +143,24 @@ return a documented sentinel, not zero.
 **Rationale:** zero is a valid measurement and would be indistinguishable from
 "not measured", which Constitution III forbids. A sentinel is detectable.
 
-**Detection:** the sentinel value, to be fixed by 005's spec.
+**Detection:** the sentinel value, fixed by Gate 5. A numeric field with no
+analogue carries `-1` in its own declared width (SD-7); a character field
+carries `?` to its full width (SD-8). Zero is deliberately not used: zero is a
+legitimate statistic, so a program cannot tell it from "not measured", which is
+what Constitution III forbids.
+
+Implemented as a stamp at the start of every statement, with population then
+filling only what the statement can honestly supply. That single mechanism also
+gives FR-005.19 — a statement class that leaves the area undefined simply does
+not populate, so it reads as sentinels rather than as the previous statement's
+plausible numbers.
+
+**As built (Gate 5):** `num_tables`, `table_name` and `records_used` carry real
+values on the cursor path. `records_accessed`, `disc_reads`, `messages`,
+`message_bytes`, `waits` and `escalations` are all sentinel — more of `stats[]`
+than the original entry anticipated. `table_name` is also sentinel on the DML
+path, because `INSERT`/`UPDATE`/`DELETE` return no result-set metadata to read
+it from and parsing the statement would violate NFR-001.1.
 
 **Migration:** programs that log SQLSA statistics keep working; programs that
 branch on `disc_reads` or the VSBB flags need review.

@@ -1,0 +1,5 @@
+/* T512 — version selection. 330 is accepted for SQLSA, and only for SQLSA. */
+#pragma SQL
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 330;
+EXEC SQL INCLUDE SQLSA;
+int main(void) { return 0; }

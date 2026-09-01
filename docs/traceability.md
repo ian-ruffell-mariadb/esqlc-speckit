@@ -10,8 +10,8 @@ topics — a slice proves the spine, never the breadth. Marking those `tested`
 would overstate coverage, and leaving them `spec` understates it. Where a row is
 `partial`, the gap is named.
 
-Coverage as of Gate 4 (2026-09-01): Gate 1 insert · Gate 2 retrieval ·
-Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA.
+Coverage as of Gate 5 (2026-09-01): Gate 1 insert · Gate 2 retrieval ·
+Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA · Gate 5 the SQLSA.
 
 `/speckit.analyze` fails if any topic is owned by two features or by none.
 
@@ -134,14 +134,14 @@ Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA.
 
 | Topic | Owner | Reqs | Status |
 |---|---|---|---|
-| `INCLUDE STRUCTURES` and version selection | 005 | | spec |
+| `INCLUDE STRUCTURES` and version selection | 005 | G5: VERSION n; not EXTERNAL, not VERSION CURRENT | partial |
 | Default-to-version-2 behaviour and message | 005 | G4 | tested |
 | C compiler version check / error 11203 | 005 | | spec |
 | Sharing structures (`EXTERNAL`) | 005 | | spec |
 | `sqlcode` semantics | 005 | G1-G4 | tested |
 | `WHENEVER` directive, actions, precedence | 005 | G4: SQLWARNING never fired (DIV-042) | partial |
 | `SQLCA` declaration and access | 005 | G4: private layout, accessor-only (DIV-041) | partial |
-| `SQLSA` declaration, reset semantics, fields | 005 | | spec |
+| `SQLSA` declaration, reset semantics, fields | 005 | G5: v300 populated, v330 layout only; prepare arm never populated | partial |
 
 ## Section 10 — Dynamic SQL
 

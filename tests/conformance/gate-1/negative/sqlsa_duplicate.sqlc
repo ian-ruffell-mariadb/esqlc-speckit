@@ -1,0 +1,6 @@
+/* T522 — a second non-EXTERNAL SQLSA definition (FR-005.8). */
+#pragma SQL
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL INCLUDE SQLSA;
+int main(void) { return 0; }

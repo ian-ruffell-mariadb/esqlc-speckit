@@ -1,0 +1,31 @@
+/* T516b — SD-8: an unmappable character field is '?' to its full width.
+   DML returns no result-set metadata, so table_name has no source there. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  char want[24];
+  memset(want, '?', sizeof want);
+  EXEC SQL BEGIN WORK;
+  part_num = 5001; memcpy(part_desc, "SENTINEL CHAR ROW ", 18);
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  if (sqlcode < 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+  /* An INSERT has no result-set metadata to read a table name from. */
+  if (memcmp(sqlsa.u.dml.stats[0].table_name, want, 24) != 0) {
+    printf("FAIL: table_name not the character sentinel: %.24s\n",
+           sqlsa.u.dml.stats[0].table_name);
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("char sentinel ok\n");
+  return 0;
+}
