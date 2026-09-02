@@ -155,6 +155,11 @@ gives FR-005.19 — a statement class that leaves the area undefined simply does
 not populate, so it reads as sentinels rather than as the previous statement's
 plausible numbers.
 
+**Narrowed by Gate 6:** `table_name` is real on the DML path too, via SD-9's
+scanner landmark. The character sentinel now applies only to statement forms the
+landmark cannot read — a multi-table `UPDATE`, a leading subquery, a delimited
+identifier — not to the whole DML path as Gate 5's report stated.
+
 **As built (Gate 5):** `num_tables`, `table_name` and `records_used` carry real
 values on the cursor path. `records_accessed`, `disc_reads`, `messages`,
 `message_bytes`, `waits` and `escalations` are all sentinel — more of `stats[]`
@@ -471,3 +476,39 @@ is what the manual advises regardless of platform.
 
 **Migration:** what an affected program's owner should do.
 ```
+
+## DIV-053 — `CLIENT_FOUND_ROWS`, and rows found versus rows altered
+
+**Status:** proposed · **Feature:** 003, 004 · **Citation:** `[SQLPM/C §4 p.4-13]`, `[SQLPM/C §9 p.9-17]`
+
+**NonStop:** two different counts, defined on two different pages. `sqlcode`
+100 means *"No rows were found on a search condition"* (§4 p.4-13), so it is
+about rows **matched**. `records_used` is *"Number of records altered or
+returned"* (§9 p.9-17), so it is about rows **changed**. For an `UPDATE` that
+matches a row and changes nothing, SQL/MP's two values disagree by design:
+found, but not altered.
+
+**Here:** MariaDB's `affected_rows` reports rows changed for an `UPDATE` by
+default, which is the wrong basis for `sqlcode`. The connection therefore
+requests `CLIENT_FOUND_ROWS`, making `affected_rows` report rows matched, and
+`sqlcode` follows it. The altered count is recovered separately from
+`mysql_info`'s `Changed:` field, which MariaDB emits for `UPDATE`. `INSERT` and
+`DELETE` need no split — matched and altered are the same number there.
+
+**Rationale:** using one count for both is a silent semantic change whichever
+way it is wrong. Taking changed-rows for `sqlcode` makes a found row
+indistinguishable from a missing one, so a `WHENEVER NOT FOUND` handler fires on
+a successful update. Taking matched-rows for `records_used` inflates the
+statistic for every no-op update. Constitution III rules out both.
+
+**Detection:** an `UPDATE` whose `WHERE` matches a row and sets it to the value
+it already holds. `sqlcode` is 0 and `records_used` is 0.
+
+**Migration:** none for a conforming program. A program that inferred "rows were
+changed" from a zero `sqlcode` was relying on something SQL/MP never promised,
+and it behaves the same here as on NonStop.
+
+**Note:** `CLIENT_FOUND_ROWS` is connection-wide, so any statement class added
+later inherits matched-rows semantics from `affected_rows` whether or not its
+author intends it. Registered here rather than left as a connection flag to be
+discovered.
