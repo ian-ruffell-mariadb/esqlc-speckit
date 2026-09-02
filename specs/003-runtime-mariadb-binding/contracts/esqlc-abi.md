@@ -18,8 +18,8 @@ absent entry point must add it here in the same change.
 | Session lifecycle | **decided** | — |
 | Diagnostics channel (`sqlcode`) | **decided** | warning values — `DIV-042` |
 | Transaction control | **shape decided, semantics open** | 003 Q1, Q2 — `SQLRM` |
-| Statement execution and binding | outline only | 002 conversion rules |
-| Cursors | not started | feature 004, incl. Q6/Q7 |
+| Statement execution and binding | outline; searched DML decided | 002 conversion rules |
+| Cursors | **read-only decided** | positioned ops — 004 Q3/Q7, `SQLRM` |
 | Structures — `SQLCA` | **decided** | — (Gate 4; layout private, `DIV-041`) |
 | Structures — `SQLSA` | **shape decided, population partial** | `records_accessed` source — `DIV-011` |
 | Descriptors (SQLDA) | not started | feature 007, `DIV-040` |
@@ -219,8 +219,19 @@ features 001 and 004 can proceed against a stub.
    The body is carried verbatim from source (NFR-001.1); the runtime
    parameterises it against the descriptors (FR-003.10). */
 int esqlc_stmt_exec(const char *body, size_t body_len,
-                    const esqlc_hostvar_t *vars, int var_count);
+                    const esqlc_hostvar_t *vars, int var_count,
+                    const char *table);
 ```
+
+`table` was added by Gate 6. It is the landmark identifier the scanner captured
+— the token after `INTO`, `UPDATE` or `FROM` as the leading keyword dictates —
+or `NULL` when the statement's form yielded none. `NULL` means the `SQLSA`
+reports SD-8's character sentinel; the runtime never guesses a table name.
+
+This is a landmark, not a parse. The scanner already records `INTO` and `FROM`
+positions in the same pass, and this is a third of the same kind, so NFR-001.1
+still holds: one identifier at a known offset is read and nothing after it is
+interpreted.
 
 ### `esqlc_hostvar_t`
 
