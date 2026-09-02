@@ -116,10 +116,25 @@ already use, and the same operation `name_after_verb` performs for cursor names.
 Recorded as SD-9, provisional, with the forms it cannot read required to reach
 the sentinel rather than a wrong name.
 
-**Gate 7 — host variable type breadth** is the larger prize and equally
-unblocked: `VARCHAR`, the integer widths including 64-bit, float and double,
-date-time as `char`. Decimal and the character-set family stay out, on 002
-Q2/Q3 and Q4. It is second only because Gate 6 is nearly free.
+**Gate 7 — host variable type breadth**, specified in
+[specs/gate-7.md](specs/gate-7.md) and **ready to plan**. Six gates in, the type
+system is `char[]` and 16-bit `short`, so a program declaring `int`, `long
+long`, `float` or a `VARCHAR` structure — most of them — still cannot compile.
+The largest remaining work that needs no `SQLRM`.
+
+Statements have had six gates of attention and types have had one. Both
+type-mapping rows in [traceability.md](docs/traceability.md) carry the same
+note: *16-bit only*.
+
+Most of it costs nothing at the runtime. `esqlc_hostvar_t` has carried `width`,
+`capacity` and the type-family constants since Gate 1 precisely so that widening
+the type system would not move the interface, and `exec.c` already binds widths
+2, 4 and 8. **It is the first slice since Gate 2 to add no ABI surface at all**,
+and the work lands almost entirely in the declaration parser — the one component
+no previous gate has had to grow.
+
+Character sets, `DECIMAL`, `SETSCALE` and the four conversion warnings stay out,
+on 002 Q4, Q2/Q3 and Q1 respectively.
 
 **The full Phase 2 gate** additionally needs positioned `UPDATE`/`DELETE`,
 cursor stability, message rendering, and the four mandatory conversion warnings
