@@ -25,10 +25,29 @@ host variable is 32 bits on LP64 Linux, where `long` is 64 bits.
 every `INTEGER` host variable and break any program that relies on wraparound,
 `sizeof`, struct layout, or `%ld` format strings.
 
-**Detection:** `sizeof(hostvar)` is unchanged from NonStop; `typeof` differs.
-Programs that spell out `long` in their own declarations rather than using
-`INVOKE` are unaffected in width but will see a type mismatch if they pass a host
-variable to a function declared with `long`.
+**Detection:** for a *generated* declaration, `sizeof(hostvar)` is unchanged
+from NonStop and only `typeof` differs.
+
+**Corrected by Gate 7.** This entry previously claimed that programs which
+spell out `long` in their own declarations rather than using `INVOKE` are
+*"unaffected in width"*. That is wrong, and it was wrong in a way that did not
+build: `decl.cc` described a hand-declared `long` as 32 bits while the C
+variable was 64, and the `NFR-002.2` assertion rejected the unit —
+
+```
+error: static assertion failed due to requirement 'sizeof (big) == 4'
+```
+
+The assertion was right. A hand-declared `long` **is** affected in width: it is
+eight bytes on LP64 where NonStop's was four. The width in the descriptor now
+comes from the host compiler's `sizeof`, so the descriptor always describes the
+variable that exists. The guidance to use width-exact types applies to
+generated declarations, where the preprocessor chooses the type; it cannot apply
+to a declaration the customer wrote, because rewriting that would be the source
+change Principle II forbids.
+
+Consequence for a program relying on 32-bit `long`: values in range behave
+identically, values relying on 32-bit wraparound do not.
 
 **Migration:** compile with `-Wconversion`. `INVOKE`-generated declarations need
 no change. Hand-written declare sections using `long` for `INTEGER` columns
@@ -529,3 +548,35 @@ and an empty string. A guard no test can reach is not a guard.
 because for those two statements matched and altered are the same number. The
 `NULL` case is therefore a normal path and not a failure, which is why it
 returns `matched` rather than the sentinel.
+
+## DIV-054 — SQL error 8300 without its file-system detail
+
+**Status:** proposed · **Feature:** 002, 003 · **Citation:** `[SQLPM/C §2 p.2-5]`
+
+**NonStop:** an input value too large for its column returns SQL error 8300,
+paired with a file-system detail of 1031 — the Guardian error for a numeric
+overflow, retrievable through `SQLCAFSCODE`.
+
+**Here:** MariaDB reports error 1264 (`SQLSTATE 22003`, "Out of range value for
+column") with no equivalent detail code. The `sqlcode` is faithful — 1264 maps
+to -8300 — but `SQLCAFSCODE` has nothing truthful to return, so it reports the
+sentinel rather than inventing 1031.
+
+**Rationale:** the code a program branches on is reproducible and is reproduced.
+Fabricating a Guardian error number for a condition no Guardian file system
+reported would be exactly the silent invention Constitution III forbids, and it
+would be undetectable — 1031 is a plausible value.
+
+**Detection:** an out-of-range insert sets `sqlcode` to -8300 and
+`esqlc_fs_detail` reports the sentinel, not 1031.
+
+**Migration:** a program that branches on `sqlcode` is unaffected. One that
+branches on the file-system detail behind an 8300 needs review, and there is no
+way to make it work unchanged.
+
+**Depends on strict mode.** MariaDB raises 1264 as an error only under
+`STRICT_TRANS_TABLES`; without it the value is truncated and a warning issued,
+which would turn a documented error into a silently stored wrong value. The
+runtime's `sql_mode` handling therefore has to guarantee strict mode, not merely
+hope for it — recorded here because the divergence is only bounded while that
+holds.
