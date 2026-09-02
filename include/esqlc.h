@@ -77,8 +77,13 @@ int  esqlc_txn_begin(void);
 int  esqlc_txn_commit(void);
 int  esqlc_txn_rollback(void);
 
+/* `table` is the landmark identifier the scanner captured — the token after
+ * INTO, UPDATE or FROM as the leading keyword dictates — or NULL when the
+ * statement's form yielded none. NULL means the SQLSA reports the character
+ * sentinel; the runtime never guesses a table name (Gate 6, SD-9). */
 int  esqlc_stmt_exec(const char *body, size_t body_len,
-                     const esqlc_hostvar_t *vars, int var_count);
+                     const esqlc_hostvar_t *vars, int var_count,
+                     const char *table);
 
 /* Cursors (Gate 3). A cursor is long-lived state spanning three statements,
  * which one-shot esqlc_stmt_exec cannot express. Identified by name; see the

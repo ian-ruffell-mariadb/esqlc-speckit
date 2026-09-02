@@ -1,10 +1,13 @@
-/* Gate 1 fixture, repointed by Gate 2. It used SELECT as its example of an
-   unimplemented statement; SELECT is now implemented, so it moved to UPDATE,
-   which feature 004 still owns. Without this the fixture would silently stop
-   testing FR-001.15 and start testing ESQLC-1014 instead. */
+/* Gate 1 fixture, repointed twice. It used SELECT as its example of an
+   unimplemented statement; Gate 2 implemented that and moved it to UPDATE;
+   Gate 6 implements that too, so it moves to PREPARE, which feature 007 owns.
+
+   The churn is the fixture working as intended: each gate that implements the
+   example has to find a new one, and the alternative is a fixture that
+   silently stops testing FR-001.15 and starts testing something else. */
 #pragma SQL
 long sqlcode;
 int main(void) {
-  EXEC SQL UPDATE parts SET weight = 1 WHERE part_num = 1;
+  EXEC SQL PREPARE s1 FROM "SELECT part_num FROM parts";
   return 0;
 }

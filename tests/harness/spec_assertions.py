@@ -347,6 +347,102 @@ def assert_sqlsa_emission(out: str) -> None:
     check("FR-003.1", not leaked, f"emitted C called MariaDB directly: {leaked}")
 
 
+
+LANDMARK_RE = re.compile(r'esqlc_stmt_exec\(\s*"(?:[^"\\]|\\.)*"\s*,\s*\d+\s*,'
+                         r'[^;]*?,\s*(?P<table>NULL|"[A-Za-z0-9_]+")\s*\)')
+
+
+def landmarks(out: str) -> list[str]:
+    """The table argument of each esqlc_stmt_exec call, in source order."""
+    return [m.group("table") for m in LANDMARK_RE.finditer(out)]
+
+
+def assert_table_landmark(out: str) -> None:
+    """T630, T631 — the three DML forms yield their table; a literal does not."""
+    got = landmarks(out)
+    check("FR-005.22", len(got) == 4,
+          f"expected four statements to carry a table argument, got {len(got)}: {got}")
+    check("FR-005.22", all(t == '"parts"' for t in got),
+          f'every statement here targets `parts`; got {got}')
+    # T631. The fourth statement stores the text "UPDATE widgets SET x". The
+    # landmark runs in the scanner, which already skips string literals while
+    # recording INTO and FROM, so `widgets` must never be read as a table.
+    check("NFR-001.1", '"widgets"' not in out,
+          "a table-like token inside a string literal was read as a landmark")
+
+
+def assert_table_landmark_absent(out: str) -> None:
+    """T632 — the hard forms yield nothing.
+
+    A wrong table name is worse than none: `table_name` reads as authoritative,
+    so a plausible name attributed to the wrong table is undetectable, whereas
+    the sentinel is visibly "not measured".
+    """
+    got = landmarks(out)
+    check("FR-005.22", len(got) == 3,
+          f"expected three statements, got {len(got)}")
+    check("FR-005.22", all(t == "NULL" for t in got),
+          f"a multi-table UPDATE, a delimited identifier and a leading "
+          f"subquery must all yield NULL; got {got}")
+
+
+def assert_update_placeholders(out: str) -> None:
+    """T633, T634, T635 — placeholders, verbatim bodies, ABI-only calls."""
+    execs = EXEC_RE.findall(out)
+    check("FR-003.10", len(execs) >= 2, "both statements must reach esqlc_stmt_exec")
+    for sql, _ in execs:
+        check("FR-003.10", ":" not in sql,
+              f"no host-variable reference may survive into the statement: {sql!r}")
+    # The UPDATE has three references, the DELETE one.
+    if execs:
+        check("FR-003.10", execs[0][0].count("?") == 3,
+              f"each host variable becomes one placeholder: {execs[0][0]!r}")
+    check("NFR-001.1", "SET weight = ?" in out and "DELETE FROM parts WHERE" in out,
+          "statement bodies must pass through verbatim apart from placeholders")
+    stray = {n for n in CALL_RE.findall(code_only(out))
+             if not n.startswith("esqlc_")
+             and n not in {"main", "memcpy", "printf", "if", "while", "do", "return",
+                           "sizeof", "_Static_assert", "int", "long", "char",
+                           "short", "for", "switch", "strncmp"}}
+    check("FR-003.1", not stray, f"only esqlc_* calls may be emitted; found {sorted(stray)}")
+
+
+def assert_input_indicator(out: str) -> None:
+    """T639 — `:w :ind` associates on the input side; a comma does not."""
+    d = descriptors(out)
+    # weight carries w_ind; part_desc and part_num do not.
+    byname = {x["name"]: x for x in d}
+    check("FR-002.15", "weight" in byname and byname["weight"]["ind"] == "&w_ind",
+          f"`:weight :w_ind` must associate; got {byname.get('weight', {}).get('ind')}")
+    check("FR-002.15", "part_desc" in byname and byname["part_desc"]["ind"] == "0",
+          "a comma separates list items, so part_desc has no indicator")
+    check("FR-002.15", len(d) == 3,
+          f"three descriptors expected — the indicator is not one of them; got {len(d)}")
+
+
+
+def assert_positioned_refused(pp: str) -> None:
+    """T637, T638 — the refusal must name the positioned operation.
+
+    The negative harness compares code, line and column only, and
+    `ESQLC-1012` at that position is satisfied equally by "UPDATE is not
+    implemented" and by "positioned UPDATE is not implemented". Before Phase C
+    those fixtures therefore passed against no implementation at all, which is
+    a broken test rather than a green one. This asserts the reason.
+    """
+    for fixture, verb in (("update_where_current_of", "UPDATE"),
+                          ("delete_where_current_of", "DELETE")):
+        r = subprocess.run([pp, str(FIX / "negative" / f"{fixture}.sqlc")],
+                           capture_output=True, text=True)
+        msg = r.stderr
+        check("FR-001.15", "ESQLC-1012" in msg,
+              f"{fixture}: must be refused")
+        check("FR-001.15",
+              "CURRENT OF" in msg or "positioned" in msg.lower(),
+              f"{fixture}: the refusal must name the positioned operation, not "
+              f"merely '{verb}'; got {msg.strip()[:120]!r}")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: spec_assertions.py <esqlcpp>", file=sys.stderr)
@@ -385,6 +481,19 @@ def main() -> int:
     out = emit(pp, FIX / "rt" / "sqlsa_cursor_stats.sqlc")
     if out:
         assert_sqlsa_registered(out)
+    out = emit(pp, FIX / "table_landmark.sqlc")
+    if out:
+        assert_table_landmark(out)
+    out = emit(pp, FIX / "table_landmark_absent.sqlc")
+    if out:
+        assert_table_landmark_absent(out)
+    out = emit(pp, FIX / "update_placeholders.sqlc")
+    if out:
+        assert_update_placeholders(out)
+    out = emit(pp, FIX / "update_indicator_assoc.sqlc")
+    if out:
+        assert_input_indicator(out)
+    assert_positioned_refused(pp)
 
     for f in failures:
         print(f"FAIL {f}")

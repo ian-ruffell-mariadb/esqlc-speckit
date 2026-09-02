@@ -1,0 +1,13 @@
+/* T623 — positioned UPDATE is out of slice and must fail loudly rather than
+   quietly doing something searched instead. WHERE CURRENT OF is a clause, so
+   the dispatch table cannot see it; the handler checks, exactly as the cursor
+   path checks for FOR UPDATE. */
+#pragma SQL
+EXEC SQL BEGIN DECLARE SECTION;
+  short weight;
+EXEC SQL END DECLARE SECTION;
+EXEC SQL DECLARE c1 CURSOR FOR SELECT part_num, weight FROM parts;
+int main(void) {
+  EXEC SQL UPDATE parts SET weight = :weight WHERE CURRENT OF c1;
+  return 0;
+}

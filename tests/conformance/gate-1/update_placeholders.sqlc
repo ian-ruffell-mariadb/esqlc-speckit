@@ -1,0 +1,12 @@
+/* T621 — host variables in both SET and WHERE become placeholders, and no
+   value appears in the statement text (FR-003.10, NFR-003.2). */
+#pragma SQL
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; short weight; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL UPDATE parts SET weight = :weight, part_desc = :part_desc
+           WHERE part_num = :part_num;
+  EXEC SQL DELETE FROM parts WHERE part_num = :part_num;
+  return 0;
+}

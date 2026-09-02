@@ -27,10 +27,17 @@ static int is_numeric_field(enum enum_field_types t) {
     }
 }
 
+/* A negative indicator means SQL NULL, and nothing is read from the buffer
+ * (FR-002.16, FR-004.8). `is_null` had never been populated for an input bind
+ * before Gate 6 — six gates of inputs and the field was always NULL — so the
+ * failure mode this replaces is a runtime that stores the buffer contents and
+ * only appears correct when the buffer happens to hold zero. */
+static my_bool g_null_true = 1;
+
 static int bind_input(MYSQL_BIND *b, unsigned long *len,
                       const esqlc_hostvar_t *v) {
     b->buffer  = v->addr;
-    b->is_null = NULL;
+    b->is_null = (v->ind_addr && *v->ind_addr < 0) ? &g_null_true : NULL;
     switch (v->type) {
     case ESQLC_T_CHAR_FIXED:
         /* THE load-bearing line of Gate 1. `width` is the column length, not
@@ -55,8 +62,52 @@ static int bind_input(MYSQL_BIND *b, unsigned long *len,
     }
 }
 
+/* T676, T677 — the altered count, for records_used.
+ *
+ * DIV-053. sqlcode is about rows found and records_used about rows altered
+ * (§4 p.4-13, §9 p.9-17), and for an UPDATE those differ. With
+ * CLIENT_FOUND_ROWS, affected_rows gives matched; mysql_info gives
+ * "Rows matched: N  Changed: M  Warnings: W" and M is what records_used wants.
+ *
+ * This parses a server *message*, not an API. The format is long-standing and
+ * documented but is not a contract, so a parse failure must fall back to the
+ * SENTINEL and never to zero — zero is a legitimate altered count, and a
+ * broken parse reporting it would turn a missing measurement into an untrue
+ * statistic. Returns -1 when nothing could be read. */
+/* Split out as a pure function so the fallback is testable.
+ *
+ * Mutation testing found the sentinel branch unreachable from any fixture: for
+ * a real UPDATE the server always emits a Changed: field, so `!p` never fires
+ * and a mutant returning 0 there survived. A guard no test can reach is not a
+ * guard. This takes the info string directly, so a crafted one exercises every
+ * branch — tests/conformance/gate-1/rt/parse_changed.c. */
+long esqlc_rt_parse_changed(const char *info, long matched) {
+    const char *p;
+    if (!info) return matched;      /* no info line: INSERT/DELETE, where the
+                                     * two counts coincide */
+    p = strstr(info, "Changed:");
+    if (!p) return -1;              /* sentinel, never zero: zero is a
+                                     * legitimate altered count, so returning
+                                     * it for a failed parse would turn a
+                                     * missing measurement into an untrue
+                                     * statistic */
+    p += 8;
+    while (*p == ' ') ++p;
+    if (*p < '0' || *p > '9') return -1;
+    {
+        long v = 0;
+        while (*p >= '0' && *p <= '9') v = v * 10 + (*p++ - '0');
+        return v;
+    }
+}
+
+static long changed_rows(MYSQL *m, long matched) {
+    return esqlc_rt_parse_changed(mysql_info(m), matched);
+}
+
 int esqlc_stmt_exec(const char *body, size_t body_len,
-                    const esqlc_hostvar_t *vars, int var_count) {
+                    const esqlc_hostvar_t *vars, int var_count,
+                    const char *table) {
     esqlc_state_t *s = esqlc_rt_state();
     /* FR-005.20: every statement resets the SQLSA, first, so a statement that
      * fails leaves sentinels rather than the previous statement's numbers. */
@@ -181,12 +232,17 @@ int esqlc_stmt_exec(const char *body, size_t body_len,
     }
 
     if (n_out == 0) {
+        /* Under CLIENT_FOUND_ROWS this is rows MATCHED, which is the basis
+         * sqlcode 100 needs: "No rows were found on a search condition". */
         my_ulonglong aff = mysql_stmt_affected_rows(st);
-        /* DML has no result-set metadata, so table_name keeps SD-8's character
-         * sentinel; records_used is the one counter with an honest analogue. */
-        esqlc_rt_sqlsa_from_stmt(st, (long)(aff == (my_ulonglong)-1 ? 0 : aff));
-        if (aff == 0) esqlc_rt_set_notfound();
-        else          esqlc_rt_set_ok();
+        long matched = (long)(aff == (my_ulonglong)-1 ? 0 : aff);
+        /* records_used wants rows ALTERED, a different number for an UPDATE. */
+        long altered = changed_rows(s->conn, matched);
+        /* SD-9: the table comes from the scanner landmark, not from metadata —
+         * DML has none — and NULL means the sentinel, never a guess. */
+        esqlc_rt_sqlsa_from_table(table, altered);
+        if (matched == 0) esqlc_rt_set_notfound();
+        else              esqlc_rt_set_ok();
         goto done;
     }
 

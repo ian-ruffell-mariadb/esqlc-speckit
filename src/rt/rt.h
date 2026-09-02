@@ -55,6 +55,7 @@ void esqlc_rt_sqlsa_populate(long rows_used,
 int  esqlc_rt_sqlsa_version(void);
 int  esqlc_rt_sqlsa_num_tables(void);
 void esqlc_rt_sqlsa_from_stmt(MYSQL_STMT *st, long rows_used);
+void esqlc_rt_sqlsa_from_table(const char *table, long rows_used);
 
 /* cursor.c */
 void esqlc_rt_cursors_release_all(void);   /* FR-003.8 */

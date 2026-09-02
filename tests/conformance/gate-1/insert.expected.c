@@ -37,7 +37,7 @@ do {
     { &part_num, 0, ESQLC_T_INT, 2u, 2u, 0, 1, ESQLC_DIR_IN, 0 },
     { &part_desc, 0, ESQLC_T_CHAR_FIXED, 18u, 19u, 0, 1, ESQLC_DIR_IN, 0 },
   };
-  esqlc_stmt_exec("INSERT INTO parts (part_num, part_desc) VALUES (?, ?)", 53, __esqlc_hv_1, 2);
+  esqlc_stmt_exec("INSERT INTO parts (part_num, part_desc) VALUES (?, ?)", 53, __esqlc_hv_1, 2, "parts");
   sqlcode = esqlc_sqlcode();
 } while (0);
 #line 23 "tests/conformance/gate-1/insert.sqlc"

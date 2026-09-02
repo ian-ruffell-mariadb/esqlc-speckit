@@ -1,0 +1,22 @@
+/* T616 — a DELETE matching nothing: sqlcode 100. Separate from the UPDATE case
+   because the two take different routes through affected-rows handling. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  part_num = 9999;
+  EXEC SQL DELETE FROM parts WHERE part_num = :part_num;
+  if (sqlcode != 100) {
+    printf("FAIL: sqlcode=%ld, want 100\n", sqlcode);
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("delete_zero_rows ok\n");
+  return 0;
+}

@@ -92,6 +92,71 @@ std::string leading_keyword(const std::string &body) {
 
 }  // namespace
 
+
+// SD-9 — the table landmark.
+//
+// A third landmark of the same kind as INTO and FROM: one identifier at a
+// position the scanner already knows. Nothing after it is interpreted, so
+// NFR-001.1 still holds. The offsets it reads from were recorded inside the
+// body loop, which had already skipped strings and comments, so a table-like
+// token inside a "literal" can never reach here.
+//
+//   INSERT INTO parts ...   -> the identifier after INTO
+//   UPDATE parts SET ...    -> the identifier after the leading keyword
+//   DELETE FROM parts ...   -> the identifier after FROM
+//
+// Returns empty unless what follows is a plain identifier followed by a
+// separator. A multi-table UPDATE (`parts p, suppliers s`), a delimited
+// identifier (`` `parts` ``) and a leading subquery all yield nothing, because
+// a wrong table name is worse than none: table_name reads as authoritative.
+std::string table_landmark(const std::string &body, const Construct &k) {
+    std::size_t at;
+    if (k.keyword == "INSERT") {
+        if (k.into_off == Construct::npos) return {};
+        at = k.into_off + 4;                       // past "INTO"
+    } else if (k.keyword == "DELETE") {
+        if (k.from_off == Construct::npos) return {};
+        at = k.from_off + 4;                       // past "FROM"
+    } else if (k.keyword == "UPDATE") {
+        // Not a fixed offset: k.body is the raw text between "EXEC SQL" and
+        // ';', so it may open with whitespace or a newline. Assuming offset 6
+        // landed mid-keyword and quietly yielded no landmark at all.
+        std::size_t u = k.body.find_first_not_of(" \t\r\n");
+        if (u == std::string::npos) return {};
+        at = u + 6;                                // past the leading "UPDATE"
+    } else {
+        return {};
+    }
+
+    while (at < body.size() && std::isspace((unsigned char)body[at])) ++at;
+    // A delimited or qualified name is not a plain identifier. Refusing the
+    // backtick here is what keeps `DELETE FROM `parts`` on the sentinel path.
+    if (at >= body.size() || !(std::isalpha((unsigned char)body[at]) || body[at] == '_'))
+        return {};
+
+    std::string id;
+    while (at < body.size() && (std::isalnum((unsigned char)body[at]) || body[at] == '_'))
+        id += body[at++];
+
+    // What follows must separate the name from the rest of the statement. A
+    // comma means a table list; a '.' means a qualified name; an alias means
+    // this is a multi-table form the landmark cannot speak for.
+    while (at < body.size() && std::isspace((unsigned char)body[at])) ++at;
+    if (at < body.size() && (body[at] == ',' || body[at] == '.')) return {};
+
+    // A bare word after the name is an alias, and an alias only appears where
+    // more than one table might. `SET`, `WHERE` and `(` are the legitimate
+    // continuations for the three forms this slice covers.
+    if (at < body.size() && (std::isalpha((unsigned char)body[at]) || body[at] == '_')) {
+        std::size_t e = at;
+        std::string next;
+        while (e < body.size() && (std::isalnum((unsigned char)body[e]) || body[e] == '_'))
+            next += (char)std::toupper((unsigned char)body[e++]);
+        if (next != "SET" && next != "WHERE" && next != "VALUES") return {};
+    }
+    return id;
+}
+
 ScanResult scan(const std::string &src, Diag &d) {
     ScanResult out;
     Cursor c(src);
@@ -241,6 +306,7 @@ ScanResult scan(const std::string &src, Diag &d) {
                 }
                 k.body = body;
                 k.keyword = leading_keyword(body);
+                k.table = table_landmark(body, k);
                 Chunk ch; ch.is_sql = true; ch.sql = k; ch.pos = k.pos;
                 out.chunks.push_back(std::move(ch));
                 // The following C text begins *after* the construct. flush_c()

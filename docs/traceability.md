@@ -11,7 +11,8 @@ would overstate coverage, and leaving them `spec` understates it. Where a row is
 `partial`, the gap is named.
 
 Coverage as of Gate 5 (2026-09-01): Gate 1 insert · Gate 2 retrieval ·
-Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA · Gate 5 the SQLSA.
+Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA · Gate 5 the SQLSA ·
+Gate 6 searched UPDATE and DELETE.
 
 `/speckit.analyze` fails if any topic is owned by two features or by none.
 
@@ -66,9 +67,9 @@ Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA · Gate 5 the SQLSA.
 | SQL error 8204 (lost open) and recovery | 008 | | spec |
 | Single-row `SELECT` | 004 | G2 | tested |
 | Multirow `SELECT` | 004 | | spec |
-| `INSERT` (incl. nulls, timestamps) | 004 | G1: plain insert; no nulls or timestamps | partial |
-| `UPDATE` (single, multiple, null columns) | 004 | | spec |
-| `DELETE` (single, multiple) | 004 | | spec |
+| `INSERT` (incl. nulls, timestamps) | 004 | G1 plain, G6 input indicators; no timestamps | partial |
+| `UPDATE` (single, multiple, null columns) | 004 | G6: searched only; positioned needs 004 Q3/Q7 | partial |
+| `DELETE` (single, multiple) | 004 | G6: searched only; positioned needs 004 Q3/Q7 | partial |
 | Cursor lifecycle and steps | 004 | G3 read-only | tested |
 | PAID requirements per statement | 008 | | spec |
 | Cursor position rules (Table 4-2) | 004 | G3: specified rows only; 004 Q6/Q7 open | partial |

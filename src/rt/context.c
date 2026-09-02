@@ -128,11 +128,20 @@ int esqlc_rt_connect(void) {
         mysql_options(s->conn, MYSQL_READ_DEFAULT_FILE, s->optfile);
     mysql_options(s->conn, MYSQL_READ_DEFAULT_GROUP, "esqlc");
 
+    /* DIV-053. sqlcode 100 means "No rows were found on a search condition"
+     * (§4 p.4-13), so it is about rows MATCHED. MariaDB's affected_rows reports
+     * rows CHANGED for an UPDATE by default, which would make a found row
+     * indistinguishable from a missing one — a WHENEVER NOT FOUND handler
+     * firing on a successful update. CLIENT_FOUND_ROWS makes affected_rows
+     * report matched, which is the basis sqlcode needs.
+     *
+     * The altered count that records_used wants (§9 p.9-17, "records altered
+     * or returned") is then recovered separately, from mysql_info. */
     if (!mysql_real_connect(s->conn, s->host,
                             s->user[0] ? s->user : NULL,
                             NULL,
                             s->db[0] ? s->db : NULL,
-                            s->port, NULL, 0)) {
+                            s->port, NULL, CLIENT_FOUND_ROWS)) {
         /* FR-003.5: report and return; never abort the process. */
         fprintf(stderr, "ESQLC-3001: cannot resolve a connection: %s\n",
                 mysql_error(s->conn));

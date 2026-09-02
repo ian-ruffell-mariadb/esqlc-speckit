@@ -479,7 +479,7 @@ is what the manual advises regardless of platform.
 
 ## DIV-053 — `CLIENT_FOUND_ROWS`, and rows found versus rows altered
 
-**Status:** proposed · **Feature:** 003, 004 · **Citation:** `[SQLPM/C §4 p.4-13]`, `[SQLPM/C §9 p.9-17]`
+**Status:** accepted · **Feature:** 003, 004 · **Citation:** `[SQLPM/C §4 p.4-13]`, `[SQLPM/C §9 p.9-17]`
 
 **NonStop:** two different counts, defined on two different pages. `sqlcode`
 100 means *"No rows were found on a search condition"* (§4 p.4-13), so it is
@@ -512,3 +512,20 @@ and it behaves the same here as on NonStop.
 later inherits matched-rows semantics from `affected_rows` whether or not its
 author intends it. Registered here rather than left as a connection flag to be
 discovered.
+
+**As built (Gate 6).** Works as planned, and `mysql_info` parsing proved
+reliable against MariaDB's current message format. Two things the
+implementation had to settle that the plan did not anticipate:
+
+The parse's failure path is **unreachable from any live fixture** — a real
+`UPDATE` always gets a `Changed:` field, so mutation testing found a mutant
+returning `0` there surviving untouched. The parser is therefore split out as a
+pure function, `esqlc_rt_parse_changed`, and unit-tested with crafted strings
+covering a missing `Changed:`, a `Changed:` with no number, a non-numeric value
+and an empty string. A guard no test can reach is not a guard.
+
+`INSERT` and `DELETE` emit no `Changed:` field at all, so `mysql_info` returns
+`NULL` for them and the parser falls through to the matched count — correct,
+because for those two statements matched and altered are the same number. The
+`NULL` case is therefore a normal path and not a failure, which is why it
+returns `matched` rather than the sentinel.

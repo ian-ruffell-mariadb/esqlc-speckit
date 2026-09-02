@@ -48,8 +48,10 @@ int esqlc_txn_commit(void)   { note("txn_commit");   g_sqlcode = 0; return 0; }
 int esqlc_txn_rollback(void) { note("txn_rollback"); g_sqlcode = 0; return 0; }
 
 int esqlc_stmt_exec(const char *body, size_t len,
-                    const esqlc_hostvar_t *vars, int n) {
-    note("stmt_exec [%.*s] vars=%d", (int)len, body ? body : "", n);
+                    const esqlc_hostvar_t *vars, int n,
+                    const char *table) {
+    note("stmt_exec [%.*s] vars=%d table=%s", (int)len, body ? body : "", n,
+         table ? table : "(none)");
     for (int i = 0; i < n; ++i)
         note("  hv%d type=%u width=%u capacity=%u signed=%u dir=%u",
              i, vars[i].type, vars[i].width, vars[i].capacity,

@@ -1,0 +1,23 @@
+/* T611 — an UPDATE whose WHERE matches nothing: sqlcode 100 (p.4-13), and the
+   transport still succeeds. The two are different channels (see the ABI
+   contract's conventions). */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; short weight;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  part_num = 9999; weight = 1;          /* no such row */
+  EXEC SQL UPDATE parts SET weight = :weight WHERE part_num = :part_num;
+  if (sqlcode != 100) {
+    printf("FAIL: sqlcode=%ld, want 100 — no rows were found\n", sqlcode);
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("update_zero_rows ok\n");
+  return 0;
+}

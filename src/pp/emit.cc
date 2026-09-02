@@ -189,6 +189,35 @@ std::string word_after(const std::string &b, std::size_t from) {
     return w;
 }
 
+// Like placeholderise, but an associated indicator reference is removed rather
+// than turned into a placeholder: `SET weight = :w :ind` sends one parameter,
+// not two. The indicator is a binding instruction, never SQL (FR-002.15).
+std::string placeholderise_inputs(
+        const Construct &k,
+        const std::vector<std::pair<std::size_t, int>> &items) {
+    std::vector<std::pair<std::size_t, std::size_t>> ph, drop;
+    for (const auto &it : items) {
+        ph.push_back({k.hostvars[it.first].begin, k.hostvars[it.first].end});
+        if (it.second >= 0) {
+            const auto &i = k.hostvars[(std::size_t)it.second];
+            drop.push_back({i.begin, i.end});
+        }
+    }
+    std::string out;
+    std::size_t i = 0;
+    while (i < k.body.size()) {
+        bool done = false;
+        for (const auto &p : ph)
+            if (i == p.first) { out += '?'; i = p.second; done = true; break; }
+        if (done) continue;
+        for (const auto &p : drop)
+            if (i == p.first) { i = p.second; done = true; break; }
+        if (done) continue;
+        out += k.body[i++];
+    }
+    return out;
+}
+
 const char *type_macro(unsigned t) {
     switch (t) {
         case 1: return "ESQLC_T_CHAR_FIXED";
@@ -642,23 +671,68 @@ std::string emit(const std::string &file, const ScanResult &sr,
             }
             o << "  };\n";
             if (bad) { o << "} while (0);\n"; continue; }
+            // NULL table: a SELECT has result-set metadata, so the runtime
+            // reads its table names from there (Gate 5's path) and needs no
+            // landmark. The landmark exists for DML, which has no metadata.
             o << "  esqlc_stmt_exec(" << c_string_literal(sql) << ", "
-              << sql.size() << ", " << arr << ", " << cls.size() << ");\n";
+              << sql.size() << ", " << arr << ", " << cls.size() << ", NULL);\n";
             close_stmt(k.keyword);
             continue;
         }
 
-        if (k.keyword == "INSERT") {
-            std::string sql = collapse_ws(placeholderise(k));
+        // ---- INSERT / UPDATE / DELETE (T664, T665, T666, T667, T669) ----
+        // One handler. The three differ only in which landmark carries the
+        // table, which the scanner has already resolved, and in the clause each
+        // must refuse. Every reference is an input; indicators associate on the
+        // input side exactly as they do on the output side (FR-002.15).
+        if (k.keyword == "INSERT" || k.keyword == "UPDATE" || k.keyword == "DELETE") {
+            // WHERE CURRENT OF is a clause, not a keyword, so the dispatch
+            // table cannot see it — the same reason FOR UPDATE is refused
+            // inside the DECLARE CURSOR handler. Positioned operations need
+            // 004 Q3 and Q7, and Q3 needs SQLRM.
+            if (k.keyword != "INSERT") {
+                std::size_t cur = find_kw(k.body, "CURRENT");
+                if (cur != std::string::npos) {
+                    d.error("ESQLC-1012", k.pos,
+                            "positioned " + k.keyword + " (WHERE CURRENT OF) is not "
+                            "implemented in this slice; owned by feature 004 "
+                            "(static DML & cursors)");
+                    continue;
+                }
+            }
+
+            // Pair each reference with an associated indicator, if any. `:v :i`
+            // and `:v INDICATOR :i` associate; `:a, :b` does not, because a
+            // comma separates list items.
+            std::vector<std::pair<std::size_t, int>> items;   // value, indicator
+            {
+                std::vector<bool> used(k.hostvars.size(), false);
+                for (std::size_t i = 0; i < k.hostvars.size(); ++i) {
+                    if (used[i]) continue;
+                    int ind = -1;
+                    if (i + 1 < k.hostvars.size() &&
+                        associates(k.body, k.hostvars[i].end, k.hostvars[i + 1].begin)) {
+                        ind = (int)(i + 1);
+                        used[i + 1] = true;
+                    }
+                    items.push_back({i, ind});
+                }
+            }
+
+            std::string sql = collapse_ws(placeholderise_inputs(k, items));
             std::string arr = "__esqlc_hv_" + std::to_string(++hv_seq);
+            // SD-9: the landmark, or NULL. Never a guess.
+            std::string tbl = k.table.empty() ? std::string("NULL")
+                                              : c_string_literal(k.table);
             o << "do {\n";
-            if (k.hostvars.empty()) {
+            if (items.empty()) {
                 o << "  esqlc_stmt_exec(" << c_string_literal(sql) << ", "
-                  << sql.size() << ", 0, 0);\n";
+                  << sql.size() << ", 0, 0, " << tbl << ");\n";
             } else {
-                o << "  esqlc_hostvar_t " << arr << "[" << k.hostvars.size() << "] = {\n";
+                o << "  esqlc_hostvar_t " << arr << "[" << items.size() << "] = {\n";
                 bool bad = false;
-                for (const auto &ref : k.hostvars) {
+                for (const auto &it : items) {
+                    const auto &ref = k.hostvars[it.first];
                     const HostVar *hv = find(vars, ref.name);
                     if (!hv) {
                         d.error("ESQLC-1014", k.pos,
@@ -667,7 +741,21 @@ std::string emit(const std::string &file, const ScanResult &sr,
                         bad = true;
                         continue;
                     }
-                    o << "    { &" << hv->name << ", 0, " << type_macro(hv->type)
+                    std::string ind = "0";
+                    if (it.second >= 0) {
+                        const auto &iref = k.hostvars[(std::size_t)it.second];
+                        const HostVar *ihv = find(vars, iref.name);
+                        if (!ihv) {
+                            d.error("ESQLC-1014", k.pos,
+                                    "indicator ':" + iref.name +
+                                    "' is not declared in a declare section");
+                            bad = true;
+                            continue;
+                        }
+                        ind = "&" + ihv->name;
+                    }
+                    o << "    { &" << hv->name << ", " << ind << ", "
+                      << type_macro(hv->type)
                       << ", " << hv->width << "u, " << hv->capacity << "u, 0, "
                       << (hv->is_signed ? 1 : 0) << ", ESQLC_DIR_IN, 0 },\n";
                 }
@@ -675,7 +763,7 @@ std::string emit(const std::string &file, const ScanResult &sr,
                 if (bad) { o << "} while (0);\n"; continue; }
                 o << "  esqlc_stmt_exec(" << c_string_literal(sql) << ", "
                   << sql.size() << ", " << arr << ", "
-                  << k.hostvars.size() << ");\n";
+                  << items.size() << ", " << tbl << ");\n";
             }
             close_stmt(k.keyword);
             continue;
