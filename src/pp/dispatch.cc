@@ -26,13 +26,13 @@ static const Handler kHandlers[] = {
     {"OPEN",                  PosClass::Exec, nullptr},
     {"FETCH",                 PosClass::Exec, nullptr},
     {"CLOSE",                 PosClass::Exec, nullptr},
+    {"UPDATE",                PosClass::Exec, nullptr},   // Gate 6: searched only
+    {"DELETE",                PosClass::Exec, nullptr},   // Gate 6: searched only
 
     // --- recognised, deliberately unimplemented -------------------------
-    // FOR UPDATE is refused inside the DECLARE CURSOR handler rather than
-    // here: it is a clause of the cursor's statement, not a keyword of its
-    // own, so the dispatch table cannot see it.
-    {"UPDATE",             PosClass::Exec, "004 (static DML & cursors)"},
-    {"DELETE",             PosClass::Exec, "004 (static DML & cursors)"},
+    // FOR UPDATE and WHERE CURRENT OF are refused inside their handlers rather
+    // than here: both are clauses of a statement, not keywords of their own,
+    // so the dispatch table cannot see them.
     {"INVOKE",             PosClass::Decl, "006 (INVOKE schema generation)"},
     {"INCLUDE SQLDA",      PosClass::Decl, "007 (dynamic SQL)"},
     {"PREPARE",            PosClass::Exec, "007 (dynamic SQL)"},

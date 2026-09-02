@@ -207,3 +207,109 @@ The slice's ten, plus:
 12. Gate 1's insert fixtures pass unchanged under `CLIENT_FOUND_ROWS`.
 13. `DIV-053` resolved — accepted, or amended with what was actually built.
 14. `docs/traceability.md` moved off `spec` for this slice's rows.
+
+---
+
+## Implementation report — 2026-09-01
+
+All 69 tasks complete. 10/10 ctest; Tier 1 84 assertions and 21 negatives
+clean; Tier 2 42 cases.
+
+### The two counts, as built (T701, T702)
+
+`DIV-053` is accepted and works as planned. `CLIENT_FOUND_ROWS` makes
+`affected_rows` report rows matched, which is the basis `sqlcode` 100 needs, and
+`mysql_info`'s `Changed:` field supplies the altered count `records_used` wants.
+`update_matched_unchanged` — set a row to the value it already holds — reports
+`sqlcode` 0 with `records_used` 0, which is the pair SQL/MP's own two pages
+describe.
+
+`mysql_info` parsing proved reliable against MariaDB's current format. Two
+things implementation settled that the plan did not anticipate:
+
+`INSERT` and `DELETE` emit no `Changed:` field, so `mysql_info` returns `NULL`
+for them. That is a **normal path, not a failure** — matched and altered are the
+same number for those two — so the parser returns `matched` there rather than
+the sentinel. Conflating it with a parse failure would have made every insert
+report a sentinel.
+
+The failure path is **unreachable from any live fixture**, which mutation
+testing found rather than review: a real `UPDATE` always gets a `Changed:`
+field, so a mutant returning `0` instead of the sentinel survived untouched.
+The parser is now split out as the pure `esqlc_rt_parse_changed` and unit-tested
+over eight crafted inputs. A guard no test can reach is not a guard, and this
+one guarded the difference between a missing measurement and an untrue one.
+
+### The landmark, as built (T703)
+
+SD-9 works. `table_name` is real for all three DML statements. Two corrections:
+
+**A fixed offset was wrong.** `k.body` is the raw text between `EXEC SQL` and
+`;`, so it can open with whitespace or a newline, and `at = 6` landed
+mid-keyword — yielding no landmark at all, silently. It now finds the keyword
+rather than assuming its position.
+
+**One of the three "hard forms" was not hard.** The fixture called
+`DELETE FROM parts WHERE part_num IN (SELECT ... FROM suppliers)` a leading
+subquery, and it is nothing of the kind: an ordinary single-table `DELETE` whose
+target sits right after the first `FROM`, which the landmark reads correctly.
+The fixture was wrong, not the code. Replaced with a multi-table `DELETE`, where
+the token after `FROM` carries an alias and the landmark must decline.
+
+The remaining unread forms are the multi-table `UPDATE`, the multi-table
+`DELETE`, and a delimited identifier. All three reach the sentinel, and
+`table_landmark_absent` pins that in both directions.
+
+### T704 — slice decisions as built
+
+SD-1, SD-2, SD-7 carried unchanged. SD-9 held, with the offset correction above.
+
+**SD-8's scope narrowed exactly as the slice predicted, and its Gate 5 fixture
+had to move.** `sqlsa_sentinel_char` used a plain `INSERT`, which now has a
+landmark and so reports a real table name. It was repointed to a multi-table
+`DELETE` — a form the landmark declines — so it still tests the sentinel, but
+tests it where the sentinel is now the right answer. A fixture that keeps
+passing while the thing it tests has moved is worse than one that fails.
+
+### T705 — `ESQLC-4004` is unreachable, not omitted
+
+Positioned `UPDATE`/`DELETE` with no current row cannot arise while
+`WHERE CURRENT OF` is refused at compile time. Implementing the diagnostic would
+mean implementing positioned operations, which need 004 Q3, which needs `SQLRM`.
+Recorded so its absence is a consequence rather than an oversight.
+
+### Defects the tests found, not review
+
+**A negative test that passed against no implementation.** Both
+`WHERE CURRENT OF` fixtures went green immediately: the negative harness
+compares code, line and column, and `ESQLC-1012` at that position is satisfied
+equally by "UPDATE is not implemented in this slice" and by the
+positioned-operation refusal this slice adds. Fixed by asserting the *reason* —
+the message must name `CURRENT OF` — which failed until the handler checked for
+the clause.
+
+**Registration at file scope, latent since Gate 4.** Found during Gate 5 and
+worth restating here because the same shape recurred: a pending emission
+flushing on the first *construct* rather than the first *executable* one.
+
+**`unimplemented.sqlc` repointed a third time.** Gate 1 used `SELECT`, Gate 2
+moved it to `UPDATE`, Gate 6 implements that, so it now uses `PREPARE`. The
+churn is the fixture working: each gate that implements the example must find a
+new one, and the alternative is a fixture that silently stops testing FR-001.15.
+
+**A stale binary, for the sixth time.** After restoring the landmark mutation
+the sources were correct and the tests still failed identically — the mutation
+was gone from the file but not from `esqlcpp`. Every previous instance had a
+different cause; this one was a `cmake --build` that did not pick up a restored
+file. The standing rule now has to be: after any mutation run, re-run the full
+suite from a forced rebuild before believing green **or** red.
+
+### Not proved, as scoped
+
+Positioned operations in either form. Cursor stability. The landmark on the hard
+forms — proven to reach the sentinel, which is not the same as proven readable.
+Type breadth: still `char[]` and 16-bit integers, so a program using `INTEGER`
+still cannot compile. `records_accessed` and the rest of `stats[]` remain
+sentinels per `DIV-011`; only `records_used`, `num_tables` and `table_name` are
+real. Every modification was single-session, so what another session observes
+mid-statement is untouched — the same question 004 Q3 asks.

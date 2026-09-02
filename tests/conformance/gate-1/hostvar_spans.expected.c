@@ -16,7 +16,7 @@ do {
     { &a, 0, ESQLC_T_INT, 2u, 2u, 0, 1, ESQLC_DIR_IN, 0 },
     { &b, 0, ESQLC_T_CHAR_FIXED, 10u, 11u, 0, 1, ESQLC_DIR_IN, 0 },
   };
-  esqlc_stmt_exec("INSERT INTO t (x, y, z) VALUES (?, \"literal :alsonot\", ?)", 57, __esqlc_hv_1, 2);
+  esqlc_stmt_exec("INSERT INTO t (x, y, z) VALUES (?, \"literal :alsonot\", ?)", 57, __esqlc_hv_1, 2, "t");
   sqlcode = esqlc_sqlcode();
 } while (0);
 #line 9 "tests/conformance/gate-1/hostvar_spans.sqlc"

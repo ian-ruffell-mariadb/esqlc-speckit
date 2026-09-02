@@ -49,6 +49,15 @@ struct Construct {
     static constexpr std::size_t npos = static_cast<std::size_t>(-1);
     std::size_t into_off = npos;
     std::size_t from_off = npos;
+
+    // Gate 6, SD-9. The statement's table, read as a third landmark of the
+    // same kind: the identifier after INTO, UPDATE or FROM as the leading
+    // keyword dictates. Empty when the form did not yield a plain identifier —
+    // a multi-table UPDATE, a delimited identifier, a leading subquery. Empty
+    // is required rather than a best guess: `table_name` reads as
+    // authoritative, so a plausible wrong name is undetectable where the
+    // sentinel is visibly not-measured.
+    std::string table;
 };
 
 // A chunk of the source: either verbatim C, or an embedded construct.

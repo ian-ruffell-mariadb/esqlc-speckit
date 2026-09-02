@@ -198,6 +198,21 @@ void esqlc_rt_sqlsa_from_stmt(MYSQL_STMT *st, long rows_used) {
     if (meta) mysql_free_result(meta);
 }
 
+/* T679 — populate from an explicit table name (SD-9's landmark) rather than
+ * from result-set metadata. DML has no metadata, which is why Gate 5 left
+ * table_name at the character sentinel for the whole DML path; the scanner
+ * landmark is the source it was missing. NULL still means the sentinel. */
+void esqlc_rt_sqlsa_from_table(const char *table, long rows_used) {
+    const char *names[1];
+    if (!g_sqlsa) return;
+    if (table && table[0]) {
+        names[0] = table;
+        esqlc_rt_sqlsa_populate(rows_used, names, 1);
+    } else {
+        esqlc_rt_sqlsa_populate(rows_used, NULL, 0);
+    }
+}
+
 int esqlc_rt_sqlsa_version(void) { return g_sqlsa ? g_version : 0; }
 
 /* The table tests/harness/sqlsa_layout_sync.sh reads. Every entry here must

@@ -19,7 +19,9 @@ int main(void) {
     const char *sql = "INSERT INTO parts (part_num, part_desc) VALUES (?, ?)";
 
     if (esqlc_txn_begin() != 0) { puts("txn_begin failed"); return 1; }
-    if (esqlc_stmt_exec(sql, strlen(sql), hv, 2) != 0) {
+    /* NULL table: a hand-written ABI caller has no scanner landmark to pass,
+       and NULL means the SQLSA reports the sentinel rather than a guess. */
+    if (esqlc_stmt_exec(sql, strlen(sql), hv, 2, NULL) != 0) {
         printf("exec failed sqlcode=%ld\n", esqlc_sqlcode());
         return 1;
     }

@@ -264,6 +264,11 @@ run_case update_zero_rows "$RT/update_zero_rows.sqlc" 0 \
 run_case update_matched_unchanged "$RT/update_matched_unchanged.sqlc" 0 \
   && ok "update_matched_unchanged — found but not altered (DIV-053)"
 
+# The parse's failure path, which no live fixture can reach: a real UPDATE
+# always gets a Changed: field, so a mutant returning 0 there survived.
+run_case parse_changed "$RT/parse_changed.c" 0 \
+  && ok "parse_changed — failed parse falls back to the sentinel (T677)"
+
 run_case update_set_null "$RT/update_set_null.sqlc" 0 \
   && ok "update_set_null — input indicator (FR-004.8, FR-002.16)"
 

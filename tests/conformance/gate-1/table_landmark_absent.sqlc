@@ -13,7 +13,12 @@ int main(void) {
            WHERE p.part_num = s.part_num;
   /* a delimited identifier is not a plain identifier */
   EXEC SQL DELETE FROM `parts` WHERE part_num = :part_num;
-  /* a leading subquery: the token after FROM is not a table */
-  EXEC SQL DELETE FROM parts WHERE part_num IN (SELECT part_num FROM suppliers);
+  /* A multi-table DELETE. The first draft of this fixture used
+       DELETE FROM parts WHERE part_num IN (SELECT ... FROM suppliers)
+     and called it a leading subquery, which was wrong: that is an ordinary
+     single-table DELETE whose target sits right after the first FROM, and the
+     landmark reads `parts` correctly. The genuinely unreadable form is the
+     multi-table one, where the token after FROM carries an alias. */
+  EXEC SQL DELETE p FROM parts p JOIN suppliers s ON p.part_num = s.part_num;
   return 0;
 }

@@ -1,5 +1,11 @@
 /* T516b — SD-8: an unmappable character field is '?' to its full width.
-   DML returns no result-set metadata, so table_name has no source there. */
+
+   Repointed by Gate 6. Gate 5 used a plain INSERT, because DML returned no
+   result-set metadata and so had no source for table_name at all. SD-9's
+   scanner landmark gave it one, which narrowed SD-8 rather than removing it:
+   the sentinel now answers for the statement forms the landmark cannot read.
+   So the fixture uses one of those — a multi-table DELETE, whose target the
+   landmark deliberately refuses to guess at. */
 #pragma SQL
 #include <stdio.h>
 #include <string.h>
@@ -15,10 +21,10 @@ int main(void) {
   char want[24];
   memset(want, '?', sizeof want);
   EXEC SQL BEGIN WORK;
-  part_num = 5001; memcpy(part_desc, "SENTINEL CHAR ROW ", 18);
-  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
-  if (sqlcode < 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
-  /* An INSERT has no result-set metadata to read a table name from. */
+  /* A multi-table DELETE: the token after FROM carries an alias, so the
+     landmark yields nothing and the runtime must not invent a name. */
+  EXEC SQL DELETE p FROM parts p JOIN suppliers s ON p.part_num = s.part_num;
+  if (sqlcode < 0) { printf("FAIL: delete sqlcode=%ld\n", sqlcode); return 1; }
   if (memcmp(sqlsa.u.dml.stats[0].table_name, want, 24) != 0) {
     printf("FAIL: table_name not the character sentinel: %.24s\n",
            sqlsa.u.dml.stats[0].table_name);
