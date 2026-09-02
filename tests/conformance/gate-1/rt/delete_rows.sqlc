@@ -1,0 +1,27 @@
+/* T615 — one DELETE removing more than one row, with records_used matching.
+   The first statement in the project whose SQLSA reports a count above 1. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short lo; short hi;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  lo = 4104; hi = 4106;                 /* three seeded rows */
+  EXEC SQL DELETE FROM parts WHERE part_num >= :lo AND part_num <= :hi;
+  if (sqlcode != 0) { printf("FAIL: delete sqlcode=%ld\n", sqlcode); return 1; }
+  if (sqlsa.u.dml.stats[0].records_used != 3) {
+    printf("FAIL: records_used=%ld, want 3\n",
+           (long)sqlsa.u.dml.stats[0].records_used);
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("delete_rows ok\n");
+  return 0;
+}

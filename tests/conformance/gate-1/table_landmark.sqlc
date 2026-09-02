@@ -1,0 +1,16 @@
+/* T619 — the three DML forms yield their table identifier, and a table-like
+   token inside a string literal does not. The landmark lives in the scanner
+   precisely so a literal cannot be mistaken for one: the scanner already skips
+   strings while recording INTO and FROM positions in the same pass. */
+#pragma SQL
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19]; short weight;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  EXEC SQL UPDATE parts SET weight = :weight WHERE part_num = :part_num;
+  EXEC SQL DELETE FROM parts WHERE part_num = :part_num;
+  /* "UPDATE widgets" is data. The landmark must still read `parts`. */
+  EXEC SQL UPDATE parts SET part_desc = "UPDATE widgets SET x" WHERE part_num = :part_num;
+  return 0;
+}

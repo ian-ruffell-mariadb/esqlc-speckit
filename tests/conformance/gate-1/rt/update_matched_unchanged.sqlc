@@ -1,0 +1,38 @@
+/* T612 — the slice's most important fixture.
+   4102's weight is already 42. Setting it to 42 matches a row and changes
+   nothing, which is where SQL/MP's two counts disagree by design:
+     sqlcode     100 means "No rows were found on a search condition" (p.4-13)
+                 -> a row WAS found, so 0.
+     records_used "Number of records altered or returned"        (p.9-17)
+                 -> nothing was altered, so 0.
+   MariaDB's affected_rows reports rows CHANGED by default, so without
+   CLIENT_FOUND_ROWS this reports 100 for a row it definitely found, and a
+   WHENEVER NOT FOUND handler would fire on a successful update. DIV-053. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; short weight;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  int bad = 0;
+  EXEC SQL BEGIN WORK;
+  part_num = 4102; weight = 42;          /* the value it already holds */
+  EXEC SQL UPDATE parts SET weight = :weight WHERE part_num = :part_num;
+  if (sqlcode != 0) {
+    printf("FAIL: sqlcode=%ld, want 0 — the row was found\n", sqlcode);
+    bad = 1;
+  }
+  if (sqlsa.u.dml.stats[0].records_used != 0) {
+    printf("FAIL: records_used=%ld, want 0 — nothing was altered\n",
+           (long)sqlsa.u.dml.stats[0].records_used);
+    bad = 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("matched-unchanged %s\n", bad ? "BAD" : "ok");
+  return bad;
+}

@@ -1,0 +1,42 @@
+/* T618 — SD-9: table_name is real on the DML path, from the scanner landmark.
+   Gate 5 left this as the character sentinel for all three statements because
+   result-set metadata does not exist for DML. The landmark reads the identifier
+   after INTO / UPDATE / FROM without parsing the body. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19]; short weight;
+EXEC SQL END DECLARE SECTION;
+
+static int is_parts(const char *t) { return strncmp(t, "parts", 5) == 0; }
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+
+  part_num = 7001; memcpy(part_desc, "LANDMARK INSERT   ", 18);
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  if (!is_parts(sqlsa.u.dml.stats[0].table_name)) {
+    printf("FAIL: INSERT table_name=%.24s\n", sqlsa.u.dml.stats[0].table_name);
+    return 1;
+  }
+  part_num = 7001; weight = 5;
+  EXEC SQL UPDATE parts SET weight = :weight WHERE part_num = :part_num;
+  if (!is_parts(sqlsa.u.dml.stats[0].table_name)) {
+    printf("FAIL: UPDATE table_name=%.24s\n", sqlsa.u.dml.stats[0].table_name);
+    return 1;
+  }
+  part_num = 7001;
+  EXEC SQL DELETE FROM parts WHERE part_num = :part_num;
+  if (!is_parts(sqlsa.u.dml.stats[0].table_name)) {
+    printf("FAIL: DELETE table_name=%.24s\n", sqlsa.u.dml.stats[0].table_name);
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("dml_table_name ok\n");
+  return 0;
+}

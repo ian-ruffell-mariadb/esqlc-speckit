@@ -1,0 +1,33 @@
+/* T613 — FR-004.8 / FR-002.16: a negative indicator sets the column null.
+   The buffer deliberately holds a non-zero value, so a runtime that stores the
+   buffer and only sets null when it happens to be zero is caught. exec.c has
+   never populated is_null for an input bind — this is the first fixture to
+   drive the input direction at all. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; short weight; short w_ind; short check_w; short check_ind;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  part_num = 4102;
+  weight   = 999;      /* must NOT reach the column */
+  w_ind    = -1;       /* FR-002.16: negative means null */
+  EXEC SQL UPDATE parts SET weight = :weight :w_ind WHERE part_num = :part_num;
+  if (sqlcode != 0) { printf("FAIL: update sqlcode=%ld\n", sqlcode); return 1; }
+
+  part_num = 4102;
+  EXEC SQL SELECT weight INTO :check_w :check_ind FROM parts WHERE part_num = :part_num;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (check_ind != -1) {
+    printf("FAIL: indicator=%d, want -1 — the column is not null\n", check_ind);
+    printf("      stored value was %d\n", check_w);
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("update_set_null ok\n");
+  return 0;
+}

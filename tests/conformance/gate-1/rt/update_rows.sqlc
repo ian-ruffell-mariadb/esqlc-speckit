@@ -1,0 +1,28 @@
+/* T610 — a searched UPDATE changes the rows its WHERE selects, and no others. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; short weight; short check_w; short other_w;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  part_num = 4102; weight = 77;
+  EXEC SQL UPDATE parts SET weight = :weight WHERE part_num = :part_num;
+  if (sqlcode != 0) { printf("FAIL: update sqlcode=%ld\n", sqlcode); return 1; }
+  part_num = 4102;
+  EXEC SQL SELECT weight INTO :check_w FROM parts WHERE part_num = :part_num;
+  if (sqlcode != 0 || check_w != 77) {
+    printf("FAIL: weight=%d want 77 (sqlcode=%ld)\n", check_w, sqlcode); return 1;
+  }
+  part_num = 4104;   /* a row the WHERE did not select */
+  EXEC SQL SELECT weight INTO :other_w FROM parts WHERE part_num = :part_num;
+  if (sqlcode != 0 || other_w != 95) {
+    printf("FAIL: 4104 weight=%d want 95 — an unselected row changed\n", other_w);
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("update_rows ok\n");
+  return 0;
+}

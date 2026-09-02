@@ -1,0 +1,21 @@
+/* T614 — FR-002.30 on the input side of an UPDATE. `width` bytes leave the
+   program verbatim, including an embedded null. A strlen-based bind would send
+   three bytes and pad; the check is byte-exact in the harness. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; char part_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  part_num = 4102;
+  memcpy(part_desc, "ABC\0DEFGHIJKLMNOPQ", 18);   /* embedded null at 3 */
+  EXEC SQL UPDATE parts SET part_desc = :part_desc WHERE part_num = :part_num;
+  if (sqlcode != 0) { printf("FAIL: update sqlcode=%ld\n", sqlcode); return 1; }
+  EXEC SQL COMMIT WORK;
+  printf("update_char_verbatim ok\n");
+  return 0;
+}

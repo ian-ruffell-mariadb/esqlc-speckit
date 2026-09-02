@@ -1,0 +1,19 @@
+/* T620 — the forms the landmark cannot read must yield NOTHING.
+   Returning a wrong table name is worse than returning none, because
+   table_name reads as authoritative: a plausible name attributed to the wrong
+   table is undetectable, whereas the sentinel is visibly "not measured".
+   SD-9 is provisional precisely because of these. */
+#pragma SQL
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; short weight;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  /* multi-table UPDATE: the landmark would read `parts`, which is only half */
+  EXEC SQL UPDATE parts p, suppliers s SET p.weight = :weight
+           WHERE p.part_num = s.part_num;
+  /* a delimited identifier is not a plain identifier */
+  EXEC SQL DELETE FROM `parts` WHERE part_num = :part_num;
+  /* a leading subquery: the token after FROM is not a table */
+  EXEC SQL DELETE FROM parts WHERE part_num IN (SELECT part_num FROM suppliers);
+  return 0;
+}

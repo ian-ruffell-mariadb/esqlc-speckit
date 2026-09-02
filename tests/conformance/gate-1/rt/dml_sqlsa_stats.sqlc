@@ -1,0 +1,36 @@
+/* T617 — FR-005.17's DML arm. Gate 5 exercised it for INSERT only. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL BEGIN DECLARE SECTION;
+  short part_num; short weight;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  part_num = 4102; weight = 55;
+  EXEC SQL UPDATE parts SET weight = :weight WHERE part_num = :part_num;
+  if (sqlsa.u.dml.num_tables != 1) {
+    printf("FAIL: after UPDATE num_tables=%d want 1\n",
+           (int)sqlsa.u.dml.num_tables);
+    return 1;
+  }
+  if (sqlsa.u.dml.stats[0].records_used != 1) {
+    printf("FAIL: after UPDATE records_used=%ld want 1\n",
+           (long)sqlsa.u.dml.stats[0].records_used);
+    return 1;
+  }
+  part_num = 4103;
+  EXEC SQL DELETE FROM parts WHERE part_num = :part_num;
+  if (sqlsa.u.dml.num_tables != 1) {
+    printf("FAIL: after DELETE num_tables=%d want 1\n",
+           (int)sqlsa.u.dml.num_tables);
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("dml_sqlsa_stats ok\n");
+  return 0;
+}

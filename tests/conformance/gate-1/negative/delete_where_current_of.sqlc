@@ -1,0 +1,10 @@
+/* T624 — positioned DELETE, likewise refused. */
+#pragma SQL
+EXEC SQL BEGIN DECLARE SECTION;
+  short weight;
+EXEC SQL END DECLARE SECTION;
+EXEC SQL DECLARE c2 CURSOR FOR SELECT part_num, weight FROM parts;
+int main(void) {
+  EXEC SQL DELETE FROM parts WHERE CURRENT OF c2;
+  return 0;
+}
