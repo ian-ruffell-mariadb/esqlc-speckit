@@ -1,0 +1,7 @@
+/* T722 — FR-002.21. p.2-9 says declare the length a short "and not an int". */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  struct { int len; char val[27]; } vc;
+EXEC SQL END DECLARE SECTION;
+int main(void) { return 0; }

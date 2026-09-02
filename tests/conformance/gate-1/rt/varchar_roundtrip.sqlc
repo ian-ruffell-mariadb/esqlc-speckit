@@ -1,0 +1,40 @@
+/* T717 — a VARCHAR structure round-tripped, value and len, both directions.
+   len is written by the runtime on output; the program's prior value is not
+   consulted. Under a single-byte character set len in bytes and len in
+   characters are the same number, which is how this slice avoids the question
+   the manual does not answer (SD-1, and the non-proof section). */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  struct { short len; char val[27]; } vc;
+  struct { short len; char val[27]; } rc;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  k = 902;
+  memcpy(vc.val, "ACME WIDGETS", 12);
+  vc.len = 12;
+  EXEC SQL INSERT INTO typed (k, vc) VALUES (:k, :vc);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+
+  k = 902;
+  memset(&rc, 0, sizeof rc);
+  rc.len = 999;                        /* must be overwritten, not honoured */
+  EXEC SQL SELECT vc INTO :rc FROM typed WHERE k = :k;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (rc.len != 12) {
+    printf("FAIL: len got %d want 12\n", (int)rc.len);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  if (memcmp(rc.val, "ACME WIDGETS", 12) != 0) {
+    printf("FAIL: val got [%.12s] want [ACME WIDGETS]\n", rc.val);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("varchar_roundtrip ok\n");
+  return 0;
+}

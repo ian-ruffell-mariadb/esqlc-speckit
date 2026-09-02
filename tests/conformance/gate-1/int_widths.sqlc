@@ -1,0 +1,18 @@
+/* T711 — the four integer widths.
+   `long` is the interesting one: decl.cc maps it to width 4 following DIV-001's
+   note that NonStop long is 32-bit, and the NFR-002.2 assertion then measures
+   sizeof(long) == 8 on any LP64 host and rejects the unit. The assertion is
+   right; the mapping is wrong. Width must come from the host compiler. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short     w16;
+  int       w32;
+  long      wlong;
+  long long w64;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL INSERT INTO typed (k, i32, i64) VALUES (:w16, :w32, :w64);
+  EXEC SQL UPDATE typed SET i64 = :wlong WHERE k = :w16;
+  return 0;
+}

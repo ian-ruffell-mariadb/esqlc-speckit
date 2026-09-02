@@ -1,0 +1,8 @@
+/* T724 — an out-of-scope type must refuse BY NAME rather than bind as
+   something near. DECIMAL needs 002 Q2/Q3 and is not in this slice. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  decimal amount[10];
+EXEC SQL END DECLARE SECTION;
+int main(void) { return 0; }

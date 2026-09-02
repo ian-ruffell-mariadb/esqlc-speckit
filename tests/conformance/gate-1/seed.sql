@@ -14,3 +14,10 @@ INSERT INTO suppliers (part_num, supp_name) VALUES
   (3103, 'ACME SUPPLY CO   '),
   (3201, 'BOLT WORKS LTD   '),
   (4102, 'COGSWELL COGS    ');
+
+-- Gate 7 (T725): typed rows. ts is fixed rather than CURRENT_TIMESTAMP so the
+-- retrieved characters are comparable byte for byte.
+DELETE FROM typed;
+INSERT INTO typed (k, i32, i64, f4, f8, vc, ts) VALUES
+  (1,  2147483647, 9223372036854775807,  1.5,  2.25, 'ACME WIDGETS',      '2026-03-04 05:06:07'),
+  (2, -2147483648, -9223372036854775807, -1.5, -2.25, 'BOLT WORKS',       '2026-03-04 05:06:07');

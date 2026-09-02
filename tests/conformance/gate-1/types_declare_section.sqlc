@@ -1,0 +1,13 @@
+/* T714 — FR-002.1/.2: declarations are harvested only inside the section, and
+   a host variable name is any valid C identifier. */
+#pragma SQL
+long sqlcode;
+short outside_the_section;          /* must NOT become a host variable */
+EXEC SQL BEGIN DECLARE SECTION;
+  short _leading_underscore;
+  int   MiXeD_Case99;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL INSERT INTO typed (k, i32) VALUES (:_leading_underscore, :MiXeD_Case99);
+  return 0;
+}

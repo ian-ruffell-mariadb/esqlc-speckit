@@ -302,5 +302,30 @@ if run_case update_injection_literal "$RT/update_injection_literal.sqlc" 0; then
                      || bad "update_injection_literal" "the table is gone"
 fi
 
+# --- Gate 7 (T746-T752) type breadth ------------------------------------
+mdb < "$FIX/seed.sql" >/dev/null
+
+# Round-trips, not inserts: a wrong outbound width can look right inbound,
+# because binding 4 bytes of an 8-byte variable sends the low half.
+run_case int_widths_roundtrip "$RT/int_widths_roundtrip.sqlc" 0 \
+  && ok "int_widths_roundtrip — 16/32/64 (FR-002.9, NFR-002.1)"
+
+run_case float_roundtrip "$RT/float_roundtrip.sqlc" 0 \
+  && ok "float_roundtrip — REAL and DOUBLE (FR-002.10)"
+
+run_case varchar_roundtrip "$RT/varchar_roundtrip.sqlc" 0 \
+  && ok "varchar_roundtrip — value and len both ways (FR-002.6)"
+
+run_case varchar_null "$RT/varchar_null.sqlc" 0 \
+  && ok "varchar_null — indicator on a VARCHAR (FR-002.16)"
+
+run_case timestamp_to_char "$RT/timestamp_to_char.sqlc" 0 \
+  && ok "timestamp_to_char — no terminator appended (FR-002.13, FR-002.28)"
+
+# The only fixture that proves the widening has a boundary. Depends on strict
+# mode: without it MariaDB truncates and warns instead. DIV-054.
+run_case int_overflow_8300 "$RT/int_overflow_8300.sqlc" 0 \
+  && ok "int_overflow_8300 — 1264 maps to -8300, no fabricated 1031 (DIV-054)"
+
 echo "tier2: $pass passed, $fail failed"
 exit $(( fail > 0 ))

@@ -1,0 +1,37 @@
+/* T715 — a round trip per integer width, not an insert.
+   A wrong outbound width can look right inbound: binding 4 bytes of an 8-byte
+   variable sends the low half, which is correct for small values on a
+   little-endian host. The extremes below are chosen so a truncated width
+   cannot survive the trip. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short     k;
+  int       i32;
+  long long i64;
+  int       r32;
+  long long r64;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  k = 900; i32 = 2147483647; i64 = 9223372036854775807LL;
+  EXEC SQL INSERT INTO typed (k, i32, i64) VALUES (:k, :i32, :i64);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+
+  k = 900;
+  EXEC SQL SELECT i32, i64 INTO :r32, :r64 FROM typed WHERE k = :k;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (r32 != 2147483647) {
+    printf("FAIL: i32 round-trip got %d, want 2147483647\n", r32);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  if (r64 != 9223372036854775807LL) {
+    printf("FAIL: i64 round-trip got %lld, want 9223372036854775807\n", r64);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("int_widths_roundtrip ok\n");
+  return 0;
+}

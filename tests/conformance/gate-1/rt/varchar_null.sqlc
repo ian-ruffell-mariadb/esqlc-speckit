@@ -1,0 +1,34 @@
+/* T718 — a negative indicator on a VARCHAR sends null, and val is not read.
+   val deliberately holds text so a runtime that stores the buffer is caught. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  struct { short len; char val[27]; } vc;
+  short vc_ind;
+  struct { short len; char val[27]; } rc;
+  short rc_ind;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  k = 903;
+  memcpy(vc.val, "MUST NOT BE STORED", 18);
+  vc.len = 18;
+  vc_ind = -1;
+  EXEC SQL INSERT INTO typed (k, vc) VALUES (:k, :vc :vc_ind);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+
+  k = 903;
+  EXEC SQL SELECT vc INTO :rc :rc_ind FROM typed WHERE k = :k;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (rc_ind != -1) {
+    printf("FAIL: indicator %d, want -1; stored [%.18s]\n", (int)rc_ind, rc.val);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("varchar_null ok\n");
+  return 0;
+}

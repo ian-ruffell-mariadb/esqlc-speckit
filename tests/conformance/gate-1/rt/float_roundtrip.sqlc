@@ -1,0 +1,38 @@
+/* T716 — REAL and DOUBLE PRECISION round-tripped.
+   Compared within a tolerance, because exact float equality across a wire
+   format tests the wrong thing. The values are chosen so that a wrong *width*
+   — binding a float as a double or the reverse — moves the result far beyond
+   any tolerance rather than inside it. */
+#pragma SQL
+#include <stdio.h>
+#include <math.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short  k;
+  float  f4;
+  double f8;
+  float  r4;
+  double r8;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  k = 901; f4 = 1.5f; f8 = 12345.678901;
+  EXEC SQL INSERT INTO typed (k, f4, f8) VALUES (:k, :f4, :f8);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+
+  k = 901;
+  EXEC SQL SELECT f4, f8 INTO :r4, :r8 FROM typed WHERE k = :k;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (fabs((double)r4 - 1.5) > 1e-6) {
+    printf("FAIL: f4 got %g want 1.5\n", (double)r4);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  if (fabs(r8 - 12345.678901) > 1e-9) {
+    printf("FAIL: f8 got %.9f want 12345.678901\n", r8);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("float_roundtrip ok\n");
+  return 0;
+}

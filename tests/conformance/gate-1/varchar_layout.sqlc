@@ -1,0 +1,15 @@
+/* T713 — a hand-declared VARCHAR structure.
+   §2 p.2-9: "If you explicitly declare a structure as a host variable for a
+   VARCHAR column (rather than using INVOKE), declare the length as a short
+   data type (and not an int)." So the shape is fixed and the size is whatever
+   the program wrote — the preprocessor reads it rather than deriving it. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  struct { short len; char val[27]; } vc;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL INSERT INTO typed (k, vc) VALUES (:k, :vc);
+  return 0;
+}
