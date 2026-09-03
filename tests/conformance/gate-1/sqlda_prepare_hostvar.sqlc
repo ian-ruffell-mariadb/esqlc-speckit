@@ -1,0 +1,13 @@
+/* T1014 — the statement text lives in a host variable (FR-007.1), so it gets
+   the same width and capacity assertions as any character host variable. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLDA (da, 1);
+EXEC SQL BEGIN DECLARE SECTION;
+  char stmt_text[81];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL PREPARE s1 FROM :stmt_text;
+  return 0;
+}

@@ -28,3 +28,9 @@ INSERT INTO typed (k, i32, i64, f4, f8, vc, ts) VALUES
 DELETE FROM charsets;
 INSERT INTO charsets (k, c_l1, c_l2, v_kr) VALUES
   (1, 0x4142434445464748, 0x41A9434445464748, 0xB0A1B0A2);
+
+-- Gate 10 (T1010).
+DELETE FROM dynamic_numerics;
+INSERT INTO dynamic_numerics (k, n32, n64) VALUES
+  (1, 2147483647, 9223372036854775807),
+  (2, -1, NULL);

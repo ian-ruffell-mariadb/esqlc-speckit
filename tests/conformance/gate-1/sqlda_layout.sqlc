@@ -1,0 +1,10 @@
+/* T1012 — Example 10-1's field order, at a count of THREE.
+   §10 p.10-3: INCLUDE SQLDA ( sqlda-name [ , sqlvar-count ] … ), and Example
+   10-1 declares `} sqlvar[sqlvar-count];` — a placeholder the generator fills
+   in. Three rather than one, so a generator that hard-codes either 1 or 16 is
+   caught. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLDA (da3, 3);
+int main(void) { return 0; }

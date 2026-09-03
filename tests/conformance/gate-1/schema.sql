@@ -44,3 +44,14 @@ CREATE TABLE charsets (
   c_greek CHAR(8)      CHARACTER SET greek   NULL,   -- SQL/MP ISO88597
   PRIMARY KEY (k)
 ) ENGINE=InnoDB;
+
+-- Gate 10 (T1010): three numeric columns for DESCRIBE, one nullable so
+-- null_info has something to be negative about, and a table name over 8
+-- characters so DIV-057's names-buffer budget has something to hit.
+DROP TABLE IF EXISTS dynamic_numerics;
+CREATE TABLE dynamic_numerics (
+  k     SMALLINT NOT NULL,
+  n32   INTEGER  NOT NULL,
+  n64   BIGINT   NULL,
+  PRIMARY KEY (k)
+) ENGINE=InnoDB;
