@@ -1,0 +1,7 @@
+/* T721 — FR-002.12. Emitted since Gate 1 and never tested until now. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  unsigned long long too_wide;
+EXEC SQL END DECLARE SECTION;
+int main(void) { return 0; }

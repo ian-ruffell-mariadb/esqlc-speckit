@@ -443,6 +443,106 @@ def assert_positioned_refused(pp: str) -> None:
               f"merely '{verb}'; got {msg.strip()[:120]!r}")
 
 
+
+def compiles(out: str, tag: str) -> bool:
+    """Compile emitted C. The strongest Tier 1 check in Gate 7.
+
+    A descriptor whose width disagrees with sizeof fails its own NFR-002.2
+    assertion, which is exactly how the hand-declared `long` defect surfaced:
+    decl.cc claimed width 4 and the assertion measured 8.
+    """
+    import tempfile, os
+    with tempfile.TemporaryDirectory() as d:
+        c = os.path.join(d, "t.c")
+        with open(c, "w") as f:
+            f.write(out)
+        r = subprocess.run(["cc", "-std=c11", "-I", str(ROOT / "include"),
+                            "-c", c, "-o", os.path.join(d, "t.o")],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            failures.append(f"NFR-002.2: {tag} emitted C does not compile: "
+                            f"{r.stderr.strip().splitlines()[0] if r.stderr else '?'}")
+        return r.returncode == 0
+
+
+def assert_int_widths(out: str) -> None:
+    """T730, T731, T732 — widths from sizeof, not from the type's spelling."""
+    d = {x["name"]: x for x in descriptors(out)}
+    import ctypes
+    want = {"w16": 2, "w32": 4, "wlong": ctypes.sizeof(ctypes.c_long),
+            "w64": 8}
+    for n, w in want.items():
+        check("FR-002.9", n in d and int(d[n]["width"]) == w,
+              f"{n} must be width {w} (sizeof on this host), got "
+              f"{d.get(n, {}).get('width')}")
+        check("FR-002.9", n in d and d[n]["type"] == "ESQLC_T_INT",
+              f"{n} must bind as an integer type")
+    # T731 — the emitted assertion must agree with sizeof, or nothing compiles.
+    check("NFR-002.2", "_Static_assert" in out, "width assertions must be emitted")
+    compiles(out, "int_widths")
+    # T732
+    for sql, _ in EXEC_RE.findall(out):
+        check("FR-003.10", ":" not in sql,
+              f"no host-variable reference may survive: {sql!r}")
+
+
+def assert_float_widths(out: str) -> None:
+    """T733 — one family, two widths, and NOT the date-time constant."""
+    d = {x["name"]: x for x in descriptors(out)}
+    check("FR-002.10", "f4" in d and d["f4"]["type"] == "ESQLC_T_FLOAT",
+          "float must bind as ESQLC_T_FLOAT")
+    check("FR-002.10", "f4" in d and int(d["f4"]["width"]) == 4,
+          f"float must be width 4, got {d.get('f4', {}).get('width')}")
+    check("FR-002.10", "f8" in d and d["f8"]["type"] == "ESQLC_T_FLOAT",
+          "double must bind as ESQLC_T_FLOAT — one family, separated by width")
+    check("FR-002.10", "f8" in d and int(d["f8"]["width"]) == 8,
+          f"double must be width 8, got {d.get('f8', {}).get('width')}")
+    # code_only, because the fixture's own comment mentions the constant and a
+    # raw text scan matches that. Fourth time a guard in this project has
+    # matched a comment rather than code; code_only exists for exactly this.
+    check("FR-002.10", "ESQLC_T_DATETIME" not in code_only(out),
+          "ESQLC_T_DATETIME must stay unused until TYPE AS")
+    compiles(out, "float_widths")
+
+
+def assert_varchar_layout(out: str) -> None:
+    """T734, T735 — the descriptor and the asserted layout."""
+    d = {x["name"]: x for x in descriptors(out)}
+    check("FR-002.6", "vc" in d and d["vc"]["type"] == "ESQLC_T_CHAR_VAR",
+          "a VARCHAR structure must bind as ESQLC_T_CHAR_VAR")
+    # SD-10: capacity is the declared val size, width is capacity - 1.
+    check("FR-002.6", "vc" in d and int(d["vc"]["capacity"]) == 27,
+          f"capacity is the declared val size, 27; got {d.get('vc', {}).get('capacity')}")
+    check("FR-002.6", "vc" in d and int(d["vc"]["width"]) == 26,
+          f"width is capacity - 1 (SD-10); got {d.get('vc', {}).get('width')}")
+    # The structure is anonymous, so offsetof(struct tag, val) — which the plan
+    # called for — cannot be written in portable C11. sizeof on a member
+    # expression can, and these three together are a stronger proof: len is 2,
+    # val is n, and the whole structure is exactly 2 + n, so there is no padding
+    # anywhere and val must be at offset 2. That is what licenses the runtime
+    # reading val at offset 2.
+    flat = " ".join(out.split())
+    check("FR-002.21", "sizeof(vc.len) == 2" in flat,
+          "sizeof(len) must be asserted as 2 — p.2-9 requires short, not int")
+    check("NFR-002.2", "sizeof(vc.val) == 27" in flat,
+          "sizeof(val) must be asserted at the declared capacity")
+    check("NFR-002.2", "__typeof__(vc), val) == 2" in flat,
+          "val's offset must be asserted as 2 — the runtime reads it there")
+    compiles(out, "varchar_layout")
+
+
+def assert_types_declare_section(out: str) -> None:
+    """T736 — scope and identifier rules survive the new type table."""
+    names = {x["name"] for x in descriptors(out)}
+    check("FR-002.1", "outside_the_section" not in names,
+          "a declaration outside the declare section must not be harvested")
+    check("FR-002.2", "_leading_underscore" in names,
+          "a leading-underscore identifier is a valid host variable name")
+    check("FR-002.2", "MiXeD_Case99" in names,
+          "a mixed-case identifier with digits is a valid host variable name")
+    compiles(out, "types_declare_section")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: spec_assertions.py <esqlcpp>", file=sys.stderr)
@@ -494,6 +594,18 @@ def main() -> int:
     if out:
         assert_input_indicator(out)
     assert_positioned_refused(pp)
+    out = emit(pp, FIX / "int_widths.sqlc")
+    if out:
+        assert_int_widths(out)
+    out = emit(pp, FIX / "float_widths.sqlc")
+    if out:
+        assert_float_widths(out)
+    out = emit(pp, FIX / "varchar_layout.sqlc")
+    if out:
+        assert_varchar_layout(out)
+    out = emit(pp, FIX / "types_declare_section.sqlc")
+    if out:
+        assert_types_declare_section(out)
 
     for f in failures:
         print(f"FAIL {f}")

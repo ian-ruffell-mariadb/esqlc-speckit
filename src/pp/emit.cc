@@ -222,6 +222,8 @@ const char *type_macro(unsigned t) {
     switch (t) {
         case 1: return "ESQLC_T_CHAR_FIXED";
         case 2: return "ESQLC_T_INT";
+        case 3: return "ESQLC_T_CHAR_VAR";   // Gate 7: VARCHAR structures
+        case 5: return "ESQLC_T_FLOAT";      // Gate 7: float and double
         default: return "0";
     }
 }
@@ -775,12 +777,43 @@ std::string emit(const std::string &file, const ScanResult &sr,
     if (!vars.empty()) {
         o << "\n/* host variable layout assertions (NFR-002.2) */\n";
         for (const auto &hv : vars) {
-            if (hv.type == 1)
+            if (hv.type == 3) {
+                // T770 — the VARCHAR layout, proved without offsetof.
+                //
+                // The structure is ANONYMOUS: `struct { short len; char
+                // val[n]; } v;` has no tag, so offsetof(struct tag, val) — what
+                // the plan called for — cannot be written in portable C11.
+                //
+                // sizeof on a member expression works, and the three
+                // assertions together are a stronger proof than offsetof
+                // would have been: if sizeof(len) is 2, sizeof(val) is n, and
+                // sizeof the whole structure is exactly 2 + n, then there is no
+                // padding anywhere, so len is at 0 and val is at 2. The runtime
+                // reads val at offset 2 and this is what licenses that.
+                o << "_Static_assert(sizeof(" << hv.name << ".len) == 2, \""
+                  << hv.name << ".len must be short (FR-002.21)\");\n";
+                o << "_Static_assert(sizeof(" << hv.name << ".val) == " << hv.capacity
+                  << ", \"" << hv.name << ".val capacity drifted\");\n";
+                // The runtime reads `val` at offset 2, so that offset is the
+                // assertion that matters. `sizeof(struct) == 2 + capacity` was
+                // the first attempt and is wrong: the structure aligns to 2
+                // because of `len`, so an odd capacity rounds up and a correct
+                // layout fails the check. offsetof on the variable's own type
+                // is the direct statement, and __typeof__ is needed because the
+                // program's structure is anonymous — it has no tag to name.
+                o << "_Static_assert(__builtin_offsetof(__typeof__(" << hv.name
+                  << "), val) == 2, \"" << hv.name
+                  << ".val must sit at offset 2 — the runtime reads it there\");\n";
+            } else if (hv.type == 1) {
                 o << "_Static_assert(sizeof(" << hv.name << ") == " << hv.capacity
                   << ", \"" << hv.name << " capacity drifted\");\n";
-            else
+            } else {
+                // T772 — the same width the descriptor claims. This is the
+                // assertion that rejected a hand-declared `long` described as
+                // 32 bits, and it must keep doing so.
                 o << "_Static_assert(sizeof(" << hv.name << ") == " << hv.width
                   << ", \"" << hv.name << " width drifted\");\n";
+            }
         }
     }
     return o.str();

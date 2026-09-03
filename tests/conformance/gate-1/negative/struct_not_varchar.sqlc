@@ -1,0 +1,9 @@
+/* T723 — FR-002.20. Only a VARCHAR structure's name is usable as a host
+   variable. The failure mode this prevents is a program passing a record and
+   silently getting its first field. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  struct { short part_num; char part_desc[19]; } rec;
+EXEC SQL END DECLARE SECTION;
+int main(void) { return 0; }

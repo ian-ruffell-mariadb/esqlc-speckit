@@ -1,0 +1,14 @@
+/* T712 — float and double share ESQLC_T_FLOAT and are separated by `width`,
+   the same by-width dispatch the integer family uses. Neither is
+   ESQLC_T_DATETIME, which stays unused until TYPE AS. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short  k;
+  float  f4;
+  double f8;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL INSERT INTO typed (k, f4, f8) VALUES (:k, :f4, :f8);
+  return 0;
+}

@@ -1,0 +1,42 @@
+/* T719 — FR-002.13: a date-time COLUMN retrieved into a CHARACTER host
+   variable. The host variable is an ordinary char array, which is why this
+   needs no TYPE AS and why the descriptor stays ESQLC_T_CHAR_FIXED rather than
+   reaching for ESQLC_T_DATETIME.
+
+   FR-002.28 still holds at the new column type: no terminator is appended, so
+   the sentinel byte past the column length must survive. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+/* ts[20]: 19 characters of 'YYYY-MM-DD HH:MM:SS' plus the terminator byte.
+   The comment sits OUTSIDE the declare section deliberately — decl.cc's
+   tokenizer does not skip C comments, so a comment inside the section is
+   refused with ESQLC-1012 on the '/' token. That is a real defect and it is
+   NOT fixed here: it is outside FR-002.13's requirement, and a drive-by fix
+   would be exactly the scope creep the implement procedure forbids. Recorded
+   in the implementation report. */
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  char  ts[20];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  memset(ts, 0, sizeof ts);
+  ts[19] = '#';                        /* FR-002.28: must not be overwritten */
+  k = 1;
+  EXEC SQL SELECT ts INTO :ts FROM typed WHERE k = :k;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (memcmp(ts, "2026-03-04 05:06:07", 19) != 0) {
+    printf("FAIL: got [%.19s] want [2026-03-04 05:06:07]\n", ts);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  if (ts[19] != '#') {
+    printf("FAIL: a terminator was appended over the sentinel byte\n");
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("timestamp_to_char ok\n");
+  return 0;
+}

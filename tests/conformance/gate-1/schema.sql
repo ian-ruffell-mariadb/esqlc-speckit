@@ -17,3 +17,17 @@ CREATE TABLE suppliers (
   supp_name  CHAR(18)    NOT NULL,
   PRIMARY KEY (part_num)
 ) ENGINE=InnoDB;
+
+-- Gate 7 (T710): one row per type-mapping row this slice adds, so NFR-002.1's
+-- round-trip requirement has somewhere to round-trip to.
+DROP TABLE IF EXISTS typed;
+CREATE TABLE typed (
+  k        SMALLINT     NOT NULL,
+  i32      INTEGER      NULL,
+  i64      BIGINT       NULL,
+  f4       REAL         NULL,
+  f8       DOUBLE PRECISION NULL,
+  vc       VARCHAR(26)  NULL,
+  ts       TIMESTAMP    NULL DEFAULT NULL,
+  PRIMARY KEY (k)
+) ENGINE=InnoDB;

@@ -1,0 +1,42 @@
+/* T720 — FR-002.25 and DIV-054. A 32-bit value into a SMALLINT column.
+   MariaDB reports 1264 (SQLSTATE 22003), which maps to sqlcode -8300. The
+   file-system detail SQL/MP pairs with 8300 is 1031, a Guardian numeric
+   overflow, which has no analogue — so esqlc_fs_detail reports the sentinel
+   rather than inventing a plausible number.
+
+   This only holds under STRICT_TRANS_TABLES. Without it MariaDB truncates and
+   warns, and a documented error becomes a silently stored wrong value. */
+#pragma SQL
+#include <stdio.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  int   too_big;
+  short probe;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  long fs = 0;
+  int  rc;
+  EXEC SQL BEGIN WORK;
+  too_big = 99999;                     /* out of range for SMALLINT */
+  EXEC SQL INSERT INTO typed (k) VALUES (:too_big);
+  if (sqlcode != -8300) {
+    printf("FAIL: sqlcode=%ld, want -8300\n", sqlcode);
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  rc = esqlc_fs_detail(&fs);
+  if (fs == 1031) {
+    printf("FAIL: fs detail 1031 was fabricated; DIV-054 requires the sentinel\n");
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  /* And the row must not be there. */
+  EXEC SQL BEGIN WORK;
+  probe = 0;
+  EXEC SQL SELECT k INTO :probe FROM typed WHERE k = 32767;
+  EXEC SQL ROLLBACK WORK;
+  printf("int_overflow_8300 ok (fs rc=%d detail=%ld)\n", rc, fs);
+  return 0;
+}

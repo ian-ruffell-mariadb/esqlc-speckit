@@ -161,11 +161,28 @@ int esqlc_rt_connect(void) {
      * APPEND rather than assign: replacing sql_mode wholesale would clobber
      * every other mode the server or the deployment configured. */
     {
+        /* T780 — STRICT_TRANS_TABLES joins it, and for a different reason.
+         *
+         * DIV-054: FR-002.25 requires an input value too large for its column
+         * to be an ERROR (8300). MariaDB raises 1264 as an error only in strict
+         * mode; without it the value is silently truncated and a warning
+         * issued, which would turn a documented error into a stored wrong
+         * value — the exact silent semantic change Constitution III forbids.
+         *
+         * So this is not a preference. The divergence DIV-054 records is only
+         * bounded while strict mode holds, which means the runtime has to
+         * guarantee it rather than hope the deployment configured it.
+         *
+         * Still APPEND, for PAD_CHAR_TO_FULL_LENGTH's original reason:
+         * replacing sql_mode wholesale would clobber every other mode the
+         * server or the deployment set. */
         static const char q[] =
-            "SET SESSION sql_mode = CONCAT(@@sql_mode, ',PAD_CHAR_TO_FULL_LENGTH')";
+            "SET SESSION sql_mode = CONCAT(@@sql_mode, "
+            "',PAD_CHAR_TO_FULL_LENGTH,STRICT_TRANS_TABLES')";
         if (mysql_real_query(s->conn, q, (unsigned long)(sizeof q - 1)) != 0) {
             fprintf(stderr,
-                    "ESQLC-3001: cannot set PAD_CHAR_TO_FULL_LENGTH: %s\n",
+                    "ESQLC-3001: cannot set the required sql_mode "
+                    "(PAD_CHAR_TO_FULL_LENGTH, STRICT_TRANS_TABLES): %s\n",
                     mysql_error(s->conn));
             esqlc_rt_set_err_code(-3001);
             mysql_close(s->conn);

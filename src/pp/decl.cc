@@ -13,6 +13,8 @@ namespace {
 // preprocessor does not include the runtime ABI header.
 constexpr unsigned T_CHAR_FIXED = 1;
 constexpr unsigned T_INT        = 2;
+constexpr unsigned T_CHAR_VAR   = 3;   // Gate 7: VARCHAR structures
+constexpr unsigned T_FLOAT      = 5;   // Gate 7: float and double
 
 struct Tok { std::string text; Pos pos; };
 
@@ -38,12 +40,48 @@ std::vector<Tok> tokenize(const std::string &s, Pos base) {
     return t;
 }
 
+// T760 — width comes from the HOST COMPILER, not from the type's spelling.
+//
+// DIV-001 says the mapping is by width rather than by type name, and its advice
+// to use width-exact types is guidance for *generated* declarations, where the
+// preprocessor picks the type. It cannot apply to a declaration the customer
+// wrote: rewriting that would be the source change Principle II forbids.
+//
+// This function previously mapped `long` to 4, following the manual's note that
+// NonStop `long` is 32-bit. The result did not compile. The emitter asserts
+// sizeof(hostvar) == width, and on any LP64 host sizeof(long) is 8:
+//
+//     error: static assertion failed due to requirement 'sizeof (big) == 4'
+//
+// The assertion was right. A descriptor claiming four bytes of an eight-byte
+// variable would have bound the low half — correct for small values on a
+// little-endian host, silently wrong for everything else. So the width is
+// sizeof as this compiler sees it, and the divergence from NonStop's 32-bit
+// `long` is what DIV-001 already accepts.
 bool is_int_keyword(const std::string &w, unsigned *width, bool *is_signed) {
-    // DIV-001: mapping is by WIDTH, not by C type name.
-    if (w == "short")    { *width = 2; *is_signed = true;  return true; }
-    if (w == "int")      { *width = 4; *is_signed = true;  return true; }
-    if (w == "long")     { *width = 4; *is_signed = true;  return true; }
+    if (w == "short")    { *width = sizeof(short);     *is_signed = true; return true; }
+    if (w == "int")      { *width = sizeof(int);       *is_signed = true; return true; }
+    if (w == "long")     { *width = sizeof(long);      *is_signed = true; return true; }
+    if (w == "longlong") { *width = sizeof(long long); *is_signed = true; return true; }
     return false;
+}
+
+// T762 — float and double are one family separated by width, the same
+// by-width dispatch the integer family uses.
+bool is_float_keyword(const std::string &w, unsigned *width) {
+    if (w == "float")  { *width = sizeof(float);  return true; }
+    if (w == "double") { *width = sizeof(double); return true; }
+    return false;
+}
+
+
+// Error recovery for a structured declaration. Skipping to the next `;` — the
+// rule for a scalar — lands *inside* a struct, because `short len;` has one.
+// The remainder was then re-parsed as declarations and produced a spurious
+// ESQLC-1012 on the closing `}`. Skip past the brace first, then to the `;`.
+static void skip_struct(const std::vector<Tok> &t, std::size_t &i) {
+    while (i < t.size() && t[i].text != "}") ++i;
+    while (i < t.size() && t[i].text != ";") ++i;
 }
 
 }  // namespace
@@ -65,8 +103,80 @@ void parse_declare_section(const std::string &body, Pos at,
             continue;
         }
 
+        // T763 — a VARCHAR structure, recognised by shape.
+        //
+        // FR-002.6 fixes the member order and the names, and §2 p.2-9 fixes the
+        // length type: "declare the length as a short data type (and not an
+        // int)". So the shape is the specification, and anything else is
+        // refused under FR-002.20 rather than bound as its first member — the
+        // failure mode where a program passes a record and silently gets one
+        // field of it.
+        if (t[i].text == "struct") {
+            Pos sp = t[i].pos;
+            if (i + 1 >= t.size() || t[i + 1].text != "{") {
+                d.error("ESQLC-2003", sp,
+                        "only a VARCHAR structure (short len; char val[n];) may be "
+                        "used as a host variable");
+                skip_struct(t, i);
+                continue;
+            }
+            // short len ; char val [ n ] ; } name
+            const char *want[] = {"{", nullptr, "len", ";", "char", "val", "["};
+            bool shape = i + 12 < t.size();
+            if (shape) {
+                shape = t[i + 1].text == want[0] &&
+                        t[i + 3].text == want[2] && t[i + 4].text == want[3] &&
+                        t[i + 5].text == want[4] && t[i + 6].text == want[5] &&
+                        t[i + 7].text == want[6] && t[i + 9].text == "]" &&
+                        t[i + 10].text == ";" && t[i + 11].text == "}";
+            }
+            if (!shape) {
+                d.error("ESQLC-2003", sp,
+                        "only a VARCHAR structure (short len; char val[n];) may be "
+                        "used as a host variable");
+                skip_struct(t, i);
+                continue;
+            }
+            // T764 — FR-002.21: the length field must be `short`, not `int`.
+            if (t[i + 2].text != "short") {
+                d.error("ESQLC-2002", t[i + 2].pos,
+                        "a hand-declared VARCHAR length field must be 'short', not '" +
+                        t[i + 2].text + "'");
+                skip_struct(t, i);
+                continue;
+            }
+            long n = std::strtol(t[i + 8].text.c_str(), nullptr, 10);
+            if (n <= 1) {
+                d.error("ESQLC-2009", t[i + 8].pos,
+                        "VARCHAR val array size must exceed 1");
+                skip_struct(t, i);
+                continue;
+            }
+            HostVar hv;
+            hv.name      = t[i + 12].text;
+            hv.type      = T_CHAR_VAR;
+            // SD-10: capacity is the declared val size; width is capacity - 1,
+            // mirroring FR-002.3's treatment of char v[l+1]. Provisional — it
+            // assumes the CHAR_AS_STRING shape (001 Q2).
+            hv.capacity  = (unsigned)n;
+            hv.width     = (unsigned)n - 1;
+            hv.is_signed = true;
+            hv.c_decl    = "struct { short len; char val[" + t[i + 8].text + "]; } " +
+                           hv.name + ";";
+            out.push_back(hv);
+            i += 13;
+            while (i < t.size() && t[i].text != ";") ++i;
+            continue;
+        }
+
         bool is_signed = true;
         std::string type_word = t[i].text;
+        // `long long` arrives as two tokens. Collapsed here so the width table
+        // stays a flat lookup rather than growing a parser.
+        if (type_word == "long" && i + 1 < t.size() && t[i + 1].text == "long") {
+            type_word = "longlong";
+            ++i;
+        }
         if (type_word == "unsigned") {
             is_signed = false;
             if (i + 1 < t.size()) { ++i; type_word = t[i].text; }
@@ -111,6 +221,21 @@ void parse_declare_section(const std::string &body, Pos at,
             continue;
         }
 
+        if (is_float_keyword(type_word, &width)) {
+            if (i + 1 >= t.size()) break;
+            HostVar hv;
+            hv.name      = t[i + 1].text;
+            hv.type      = T_FLOAT;
+            hv.width     = width;
+            hv.capacity  = width;
+            hv.is_signed = true;
+            hv.c_decl    = type_word + " " + hv.name + ";";
+            out.push_back(hv);
+            i += 2;
+            while (i < t.size() && t[i].text != ";") ++i;
+            continue;
+        }
+
         if (is_int_keyword(type_word, &width, &sgn)) {
             if (!is_signed) sgn = false;
             if (i + 1 >= t.size()) break;
@@ -120,7 +245,9 @@ void parse_declare_section(const std::string &body, Pos at,
             hv.width     = width;
             hv.capacity  = width;
             hv.is_signed = sgn;
-            hv.c_decl    = (sgn ? "" : "unsigned ") + type_word + " " + hv.name + ";";
+            hv.c_decl    = (sgn ? "" : "unsigned ") +
+                           (type_word == "longlong" ? "long long" : type_word) +
+                           " " + hv.name + ";";
             // Reject an array of integers: not a slice form.
             if (i + 2 < t.size() && t[i + 2].text == "[") {
                 d.error("ESQLC-1012", t[i + 2].pos,
