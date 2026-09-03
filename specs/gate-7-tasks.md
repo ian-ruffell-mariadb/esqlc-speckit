@@ -349,6 +349,15 @@ mutation stayed in the tree; and `git checkout` then restored the file to its
 *committed* state, discarding T779 and T781 entirely. Both were caught only
 because the mutation result was checked against the file afterwards.
 
+**An eighth occurrence, found while fixing the comment defect (2026-09-03).**
+`make` treats an object as current when source and object share an mtime, and
+`stat` resolves to whole seconds — so a `touch` followed immediately by a build
+can leave the old binary in place with every timestamp check passing. It looked
+like a restored fix had not taken, when the source was correct all along. The
+mtime check that caught earlier variants is itself unreliable at this
+granularity: compare the binary's **content hash**, or sleep past the second
+boundary before rebuilding.
+
 That is the **seventh** occurrence of this class, and the sixth distinct cause:
 a `perl` substitution without `/g`, a guard matching its own comment, swallowed
 build output, a restore without `touch`, a backup filename that did not match
@@ -356,7 +365,8 @@ the restore path, and now a file absent from the backup list restored from a
 commit that predated the work. The lesson has stopped being about any particular
 mechanism: **verify the mutation is present, verify the binary moved, and verify
 the restore restored the right thing** — the last of which no previous gate
-checked.
+checked. And verify the binary moved by *content*, not by timestamp: see the
+eighth occurrence above.
 
 ### Not proved, as scoped
 
@@ -367,3 +377,40 @@ remains structurally verified only, as since Gate 4. `CHAR_AS_ARRAY`, which
 SD-10 assumes away. `TYPE AS` and `INTERVAL`. Timestamps on the write path —
 FR-002.13 is exercised on retrieval only, and the `INSERT` traceability row
 still says so.
+
+---
+
+## Follow-up — 2026-09-03: the declare-section comment defect, fixed
+
+The defect this slice found and deliberately left alone is now fixed, in its
+own change rather than folded into the gate. `tokenize()` in `src/pp/decl.cc`
+treats `/* … */` and `//` as whitespace, advancing line and column through the
+comment body so positions after it stay accurate.
+
+**Two tests, guarding different things — which took a mutation to discover.**
+
+`declare_with_comments.sqlc` proves the declarations are still harvested: four
+of them, with their widths intact, past block comments on their own lines,
+trailing comments, a four-line comment, `//` comments, and two comments on one
+line.
+
+That fixture cannot observe the *line tracking*, and the first attempt to make
+it do so was wrong in an instructive way. It asserted the emitted `#line`
+numbers — but those come from the **scanner's** positions, not from `decl.cc`'s
+tokenizer, so a mutation dropping `adv()` inside the comment body survived it
+even after the assertion was strengthened to pin the exact number. The
+tokenizer's line tracking affects one thing only: where a *diagnostic* inside a
+declare section is reported.
+
+So `negative/declare_error_after_comment.sqlc` exists for that alone — a bad
+declaration after a four-line comment. Without `adv()` the error is reported at
+line 14 instead of 17, three lines early, at the comment's opening rather than
+the offending declaration. That mutation now dies; the `#line` assertion in the
+positive fixture keeps its own comment stating what it does *not* guard, so the
+next reader is not misled the same way.
+
+`rt/timestamp_to_char.sqlc` has its comment back inside the declare section
+where it belongs.
+
+Full suite green: 10/10 ctest, 119 Tier 1 assertions, 26 negatives, 48 Tier 2
+cases, 35 diagnostics registered.

@@ -1,0 +1,28 @@
+/* Principle II — source compatibility over elegance.
+   Most real programs comment their declare sections. decl.cc's tokenizer did
+   not skip C comments, so `/` became a token and the declaration was refused
+   with `ESQLC-1012: host variable type '/'` — a diagnostic pointing at
+   punctuation, for a program that is valid C.
+
+   Found during Gate 7 (see the implementation report in gate-7-tasks.md) and
+   deliberately left unfixed there because it was outside that slice's
+   requirement IDs. FR-002.1, FR-002.2. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  /* a block comment on its own line, before any declaration */
+  short part_num;              /* a trailing comment after a declaration */
+  /* a block comment
+     spanning several lines, which must not disturb the line numbers
+     of anything after it */
+  char  part_desc[19];
+  // a line comment, valid C99 and onwards
+  int   qty;                   // another trailing one
+  short weight;  /* two comments */  /* on one line */
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL INSERT INTO parts (part_num, part_desc) VALUES (:part_num, :part_desc);
+  EXEC SQL UPDATE typed SET i32 = :qty WHERE k = :weight;
+  return 0;
+}

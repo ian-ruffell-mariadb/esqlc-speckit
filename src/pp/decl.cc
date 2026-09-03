@@ -26,6 +26,36 @@ std::vector<Tok> tokenize(const std::string &s, Pos base) {
     while (i < s.size()) {
         char ch = s[i];
         if (std::isspace((unsigned char)ch)) { adv(ch); ++i; continue; }
+
+        // C comments are whitespace. Skipping them here rather than anywhere
+        // else matters for two reasons: `adv` keeps line and column accurate
+        // through the comment, so a diagnostic after a multi-line comment still
+        // points at the right place; and a `;` or a type keyword inside a
+        // comment never becomes a token, so neither the parse nor the
+        // error-recovery skip can be misled by comment text.
+        //
+        // Principle II. Without this, a declare section carrying an ordinary
+        // comment was refused with "ESQLC-1012: host variable type '/'" — a
+        // diagnostic naming punctuation as an unsupported type, for a program
+        // that is valid C. Most real programs comment their declarations.
+        if (ch == '/' && i + 1 < s.size() && s[i + 1] == '*') {
+            adv(s[i]); ++i;
+            adv(s[i]); ++i;
+            while (i < s.size() && !(s[i] == '*' && i + 1 < s.size() && s[i + 1] == '/')) {
+                adv(s[i]); ++i;
+            }
+            // An unterminated comment is left to the C compiler, which sees the
+            // same text: the region is re-emitted verbatim. Consume to the end
+            // rather than inventing a diagnostic the C compiler states better.
+            if (i < s.size()) { adv(s[i]); ++i; }      // '*'
+            if (i < s.size()) { adv(s[i]); ++i; }      // '/'
+            continue;
+        }
+        if (ch == '/' && i + 1 < s.size() && s[i + 1] == '/') {
+            while (i < s.size() && s[i] != '\n') { adv(s[i]); ++i; }
+            continue;
+        }
+
         if (std::isalnum((unsigned char)ch) || ch == '_') {
             Tok tk; tk.pos = Pos{line, col};
             while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '_')) {

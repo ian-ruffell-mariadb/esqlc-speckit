@@ -543,6 +543,45 @@ def assert_types_declare_section(out: str) -> None:
     compiles(out, "types_declare_section")
 
 
+
+def assert_declare_with_comments(out: str) -> None:
+    """C comments in a declare section must not stop declarations being read.
+
+    Principle II: a program that comments its declarations is valid C, and most
+    real programs do. The tokenizer used to emit a `/` token and refuse the
+    declaration with ESQLC-1012, naming punctuation as an unsupported type.
+
+    All four declarations must be harvested, with their widths intact — a
+    comment between a type and its name would silently produce a wrong
+    descriptor rather than an error.
+    """
+    d = {x["name"]: x for x in descriptors(out)}
+    for n, w in (("part_num", 2), ("part_desc", 18), ("qty", 4), ("weight", 2)):
+        check("FR-002.1", n in d, f"{n} must be harvested despite the comments")
+        if n in d:
+            check("FR-002.2", int(d[n]["width"]) == w,
+                  f"{n} width {d[n]['width']}, want {w} — a comment must not "
+                  f"disturb the declaration it sits beside")
+    # A comment is not a declaration: exactly four, no phantom fifth.
+    check("FR-002.1", len(descriptors(out)) == 4,
+          f"four declarations expected, got {len(descriptors(out))}")
+    # Line fidelity of the emitted C. Note what this does and does not guard:
+    # #line directives come from the SCANNER's positions, not from decl.cc's
+    # tokenizer, so this cannot observe the tokenizer's line tracking at all.
+    # A mutation dropping adv() inside a comment survives this check and is
+    # caught by negative/declare_error_after_comment, where a diagnostic after
+    # a four-line comment is reported three lines early. Both tests are needed
+    # and they guard different things.
+    src = (FIX / "declare_with_comments.sqlc").read_text().splitlines()
+    want = next(i for i, l in enumerate(src, 1) if "INSERT INTO parts" in l)
+    emitted = {int(n) for n in re.findall(
+        r'#line\s+(\d+)\s+"[^"]*declare_with_comments\.sqlc"', out)}
+    check("FR-001.18", want in emitted,
+          f"the INSERT is on source line {want}; emitted #line numbers are "
+          f"{sorted(emitted)} — a comment shifted the line count")
+    compiles(out, "declare_with_comments")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: spec_assertions.py <esqlcpp>", file=sys.stderr)
@@ -606,6 +645,9 @@ def main() -> int:
     out = emit(pp, FIX / "types_declare_section.sqlc")
     if out:
         assert_types_declare_section(out)
+    out = emit(pp, FIX / "declare_with_comments.sqlc")
+    if out:
+        assert_declare_with_comments(out)
 
     for f in failures:
         print(f"FAIL {f}")
