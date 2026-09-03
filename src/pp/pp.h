@@ -121,8 +121,14 @@ bool whenever_applies(const std::string &keyword);
 // Example 10-1's layout at the directive's count. NOT a flexible member: §10
 // p.10-30 allocates sizeof(SQLDA_TYPE) + ((n-1) * sizeof(SQLVAR_TYPE)), which
 // under-allocates by one entry if sizeof excludes the array.
+// `with_types` is false for a second and subsequent INCLUDE SQLDA in a unit:
+// the types and constants are emitted once, the variable per directive. §10's
+// dynamic-SQL examples routinely declare two descriptors — p.10-19 has a dummy
+// alongside the real one — so re-emitting the types would stop a program that
+// has both an input and an output descriptor from compiling.
 std::string sqlda_layout(const std::string &var, unsigned count,
-                         const std::string &names_var, unsigned names_size);
+                         const std::string &names_var, unsigned names_size,
+                         bool with_types);
 
 // ---- schema cache (Gate 9, T960-T964) ----------------------------------
 // The preprocessor reads a committed cache and never opens a socket, which is

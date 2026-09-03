@@ -261,3 +261,100 @@ The slice's twelve, plus:
     known out-of-reach codes and their reasons.
 15. `DIV-057` resolved; `DIV-040`'s migration note confirmed against the build.
 16. `docs/traceability.md` 007 rows moved off `spec`.
+
+---
+
+## Implementation report — 2026-09-03
+
+12/12 ctest, 60 Tier 2 cases, 192 Tier 1 assertions, 35 negatives, 44
+diagnostics emitted with the registry now checked in both directions.
+
+### An assertion found a divergence: `DIV-058`
+
+`SQLDA_HEADER_LEN` is published as 4 and, with the published 32-bit `long`
+address fields, Example 10-1's `sqlvar` does begin at offset 4. `DIV-040`
+widens those fields to hold real pointers, which raises `SQLVAR_TYPE`'s
+alignment from 4 to 8 and moves `sqlvar` to **8**. Measured: published
+`sqlvar=4/align=4/sizeof=24`, widened `sqlvar=8/align=8/sizeof=40`.
+
+The plan said four `int16_t` fields followed by four pointers *"align naturally
+to 40"* — true of `SQLVAR_TYPE` in isolation, and silent about the member's
+offset inside `SQLDA_TYPE`, which is what programs compute with. **NFR-007.3's
+own `offsetof` assertion failed on the first build and named the cause**, which
+is the argument for demanding every field's offset rather than a representative
+subset.
+
+Natural alignment is kept. Packing would restore `sqlvar` to 4 and hand the
+program a misaligned load on every `sqlda->sqlvar[i].var_ptr` — fine on x86-64,
+a fault on a strict-alignment target — and p.10-30's `sizeof` arithmetic stays
+correct only with natural alignment. Both numbers are emitted as constants so a
+program doing pointer arithmetic has the one it needs.
+
+### 007 Q9 raised rather than guessed
+
+Two `INCLUDE SQLDA` directives in one unit re-emitted the type definitions and
+would not compile. §10's dynamic-SQL flow needs two descriptors — p.10-19 pairs
+a `dummy_da` with a malloc'ed one — so this is a real program shape.
+
+Emitting the types once fixes the compile and creates something worse: with one
+`struct SQLDA_TYPE`, a second descriptor declared at a larger count **silently
+gets the first count**, so `da3.sqlvar[2]` overflows. The first version of the
+refusal fixture did exactly that and passed.
+
+The manual does not resolve it. Example 10-1 parameterises the count; Table 10-2
+generates one type named `SQLDA_TYPE`; p.10-30 uses `sizeof(struct SQLDA_TYPE)`.
+Those cannot all hold for two descriptors of different sizes, and p.10-19
+sidesteps the case rather than answering it. **So Gate 10 refuses a second
+directive whose count differs**, naming the question — and 007 Q9 records it.
+
+### `DIV-057` resolved: the qualifier is omitted
+
+The names buffer's 11-byte overhead budgets 8 bytes for a Guardian table name
+and MariaDB identifiers run to 64. `DESCRIBE` writes the bare column name. A
+truncated qualifier looks valid and is wrong, which is the least detectable of
+the three failures; refusing would make nearly every table undescribable.
+
+### The `SQLSA`'s `prepare` arm fires, two fields of six
+
+Gate 5 emitted that arm as a layout and never populated it. `output_num` and
+`output_names_len` now carry data — the rest need `DESCRIBE INPUT`
+(`input_num`, `input_names_len`, `name_map_len`) and FR-005.24's published
+values 1–8 (`sql_statement_type`), both out of scope. **Wholly sentinel to
+two-thirds sentinel: progress, not completion.**
+
+### The registry now checks itself, and the first design was wrong
+
+T1035's first draft demanded every registered code be emitted or allowlisted.
+Run once, it reported 42 "unexplained" of 91 — almost all for features not built
+(008 registers 13 and has not started). That would have forced a 42-line
+allowlist meaning "everything".
+
+The check now keys off a marker the specs already carry, and fails only when
+that marker **lies** — marked unreachable while the source emits it. Verified by
+making one lie. Three codes were unreachable in prose but not in their tables;
+marking them took the honest count from 2 to 5.
+
+### Four process failures worth recording
+
+**A fourth "sqlcode after ROLLBACK".** The capacity fixture checked `sqlcode`
+after `ROLLBACK WORK`, read the rollback's outcome, and reported a working
+refusal as broken. §9 p.9-13 warns about exactly this and it has now caught me
+four times. The fixture says so in its own comment.
+
+**A ninth stale binary**, same-second mtime again, leaving `83% tests passed`
+after a restore whose files were verifiably correct.
+
+**My mutation harness misfired twice more** — one `perl` pattern that did not
+match across lines, and an argument-order bug that read `tier` from the wrong
+positional. The two mutations were then run directly, one at a time, and both
+were caught. **The mutation scripting is now the least reliable part of this
+process**, and running each mutation as an explicit sequence rather than through
+a helper is the only thing that has worked consistently.
+
+### Not proved, as scoped
+
+No character, decimal or date-time entry — the charset ID half needs `sqlh`
+(002 Q7). `RELEASE`, `DESCRIBE INPUT`, `EXECUTE IMMEDIATE`, dynamic cursors and
+`CAST` are each a slice of their own. Version 1 and 2 descriptors are resolved
+on paper and not built. The ILP32 24-byte layout is `DIV-040`'s other half. The
+collation buffer is sized and never filled.

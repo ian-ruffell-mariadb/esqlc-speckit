@@ -44,8 +44,18 @@
 namespace pp {
 
 std::string sqlda_layout(const std::string &var, unsigned count,
-                          const std::string &names_var, unsigned names_size) {
+                          const std::string &names_var, unsigned names_size,
+                          bool with_types) {
     std::ostringstream o;
+    // A second descriptor in the same unit gets the variable only. §10's
+    // examples declare two — p.10-19 pairs a dummy with the real one — and
+    // re-emitting the struct definitions is a redefinition error.
+    if (!with_types) {
+        o << "struct SQLDA_TYPE " << var << ";\n";
+        if (!names_var.empty())
+            o << "char " << names_var << "[" << (names_size + 11u) * count << "];\n";
+        return o.str();
+    }
     o << "/* --8<-- esqlc sqlda layout begin --8<-- */\n";
     o << "#include <stdint.h>\n";
     o << "#define SQLDA_EYE_CATCHER \"D1\"\n";
@@ -53,7 +63,13 @@ std::string sqlda_layout(const std::string &var, unsigned count,
     // DIV-040: the published value is 24; these fields hold real pointers.
     o << "#define SQLDA_SQLVAR_LEN 40\n";
     o << "#define SQLDA_NAMESBUF_OVHD_LEN 11\n";
-    o << "#define SQLDA_COLLBUF_OVHD_LEN 4\n\n";
+    o << "#define SQLDA_COLLBUF_OVHD_LEN 4\n";
+    // DIV-058 made visible to the program. SQLDA_HEADER_LEN keeps its published
+    // value of 4 (Table 10-2: the length of the header FIELDS), and this is
+    // where sqlvar actually begins once DIV-040's widening raises alignment.
+    // A program doing pointer arithmetic needs the second number, and having
+    // only the first is how it would land four bytes early on every entry.
+    o << "#define SQLDA_OFF_SQLVAR_EXPECTED 8\n\n";
 
     o << "struct SQLVAR_TYPE {\n"
          "    int16_t data_type;\n"

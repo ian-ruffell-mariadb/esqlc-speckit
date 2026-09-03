@@ -1,0 +1,36 @@
+/* T1015 — §10 p.10-30's allocation idiom, and the fixture that kills the
+   flexible-member mutation.
+
+       mem_reqd = sizeof(struct SQLDA_TYPE)
+                + ((num_entries - 1) * sizeof(struct SQLVAR_TYPE));
+
+   With sqlvar declared [1] this is exact; with any larger declared count it
+   over-allocates safely. With a C99 flexible member `sqlvar[]`, sizeof excludes
+   the array entirely and this UNDER-allocates by one entry — a heap overflow
+   that appears at a customer's column count and not at a fixture's.
+
+   So the check is not "does it run" but "is the block big enough for three". */
+#pragma SQL
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLDA (tmpl, 1);
+
+int main(void) {
+  const int n = 3;
+  size_t mem_reqd = sizeof(struct SQLDA_TYPE)
+                  + ((size_t)(n - 1) * sizeof(struct SQLVAR_TYPE));
+  size_t needed   = (size_t)SQLDA_OFF_SQLVAR_EXPECTED
+                  + (size_t)n * sizeof(struct SQLVAR_TYPE);
+  if (mem_reqd < needed) {
+    printf("FAIL: p.10-30's formula gives %zu but three entries need %zu.\n"
+           "      A flexible member makes sizeof exclude the array.\n",
+           mem_reqd, needed);
+    return 1;
+  }
+  printf("sqlda_malloc ok (formula %zu >= needed %zu, stride %zu)\n",
+         mem_reqd, needed, sizeof(struct SQLVAR_TYPE));
+  return 0;
+}

@@ -366,5 +366,26 @@ run_case invoke_roundtrip "$RT/invoke_roundtrip.sqlc" 0 \
 run_case invoke_null "$RT/invoke_null.sqlc" 0 \
   && ok "invoke_null — a null through the generated indicator (FR-002.16)"
 
+# --- Gate 10 (T1053-T1062) the SQLDA -------------------------------------
+mdb < "$FIX/seed.sql" >/dev/null
+
+# p.10-30's allocation idiom. Not "does it run" but "is the block big enough
+# for three entries" — a C99 flexible member under-allocates by one.
+run_case sqlda_malloc "$RT/sqlda_malloc.sqlc" 0 \
+  && ok "sqlda_malloc — p.10-30's formula holds three entries (FR-007.6)"
+
+run_case sqlda_describe "$RT/sqlda_describe.sqlc" 0 \
+  && ok "sqlda_describe — data_type/data_len/precision/null_info + the SQLSA prepare arm"
+
+# The only way FR-007.8 is observable: sentinels in the program's fields.
+run_case sqlda_untouched "$RT/sqlda_untouched.sqlc" 0 \
+  && ok "sqlda_untouched — eye_catcher, var_ptr, ind_ptr, reserved survive (FR-007.8)"
+
+run_case sqlda_execute "$RT/sqlda_execute.sqlc" 0 \
+  && ok "sqlda_execute — values through var_ptr, null through ind_ptr (FR-007.2)"
+
+run_case sqlda_refusals "$RT/sqlda_refusals.sqlc" 0 \
+  && ok "sqlda_refusals — 7001 unprepared, 7002 capacity, 7003 null var_ptr"
+
 echo "tier2: $pass passed, $fail failed"
 exit $(( fail > 0 ))

@@ -697,7 +697,7 @@ either, so there is nothing working to preserve.
 
 ## DIV-057 — The names buffer's 8-byte table-name budget
 
-**Status:** proposed · **Feature:** 007 · **Citation:** `[SQLPM/C §10 p.10-7]`
+**Status:** accepted · **Feature:** 007 · **Citation:** `[SQLPM/C §10 p.10-7]`
 
 **NonStop:** `DESCRIBE` returns each column's name to the names buffer as a
 `VARCHAR` item, and the buffer is sized `(name-string-size + 11) × sqlvar-count`.
@@ -708,6 +708,12 @@ bytes), and period separator (1 byte)"* — an 8-character Guardian file name.
 real table name does not fit the budget the published formula reserves. The
 formula's constant cannot change: `SQLDA_NAMESBUF_OVHD_LEN` is 11 and programs
 size their buffers with it.
+
+**Resolved (Gate 10): the qualifier is OMITTED.** A truncated table name looks
+valid and is wrong, which is the least detectable of the three failures; an
+absent qualifier is what a single-table query wanted anyway and is visibly
+incomplete for a join; refusing would make nearly every MariaDB table
+undescribable. So `DESCRIBE` writes the bare column name as its `VARCHAR` item.
 
 **Rationale:** the three available choices are all visible to a program reading
 the buffer, so the choice has to be made and recorded rather than discovered.
@@ -725,7 +731,7 @@ qualifier's presence or absence.
 
 ## DIV-058 — Widening the `SQLDA`'s address fields moves `sqlvar` off the published header length
 
-**Status:** proposed · **Feature:** 007 · **Citation:** `[SQLPM/C §10 pp.10-5, 10-7]`, `[DIV-040]`
+**Status:** accepted · **Feature:** 007 · **Citation:** `[SQLPM/C §10 pp.10-5, 10-7]`, `[DIV-040]`
 
 **NonStop:** Table 10-2 publishes `SQLDA_HEADER_LEN` as 4 — *"the length in
 bytes of the SQLDA structure header fields `eye_catcher` and `num_entries`"* —

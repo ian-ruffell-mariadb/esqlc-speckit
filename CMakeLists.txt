@@ -65,6 +65,7 @@ if(MARIADB_CONFIG)
         src/rt/cursor.c
         src/rt/sqlca.c
         src/rt/sqlsa.c
+        src/rt/dynamic.c
         src/rt/diag.c
     )
     target_include_directories(esqlc PUBLIC include PRIVATE src/rt)
@@ -123,6 +124,16 @@ endif()
 add_test(NAME invoke_cache_errors
          COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/invoke_cache_errors.sh
                  $<TARGET_FILE:esqlcpp>)
+
+# The emitter declares the SQLDA as a struct and the runtime addresses it by
+# offset — two encodings of one published layout. Also pins DIV-058: sqlvar
+# sits at 8, not the published header length of 4 (Gate 10, T1034).
+if(TARGET esqlc)
+    add_test(NAME sqlda_layout_sync
+             COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/sqlda_layout_sync.sh
+                     $<TARGET_FILE:esqlcpp> $<TARGET_FILE:esqlc>)
+    set_tests_properties(sqlda_layout_sync PROPERTIES SKIP_RETURN_CODE 77)
+endif()
 
 # Principle I makes the manual the contract, so a citation pointing at the
 # wrong page is worse than none — it looks like evidence. Skips when manual/ is

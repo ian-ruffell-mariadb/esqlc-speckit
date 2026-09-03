@@ -10,7 +10,7 @@ topics — a slice proves the spine, never the breadth. Marking those `tested`
 would overstate coverage, and leaving them `spec` understates it. Where a row is
 `partial`, the gap is named.
 
-Coverage as of Gate 9 (2026-09-03): Gate 1 insert · Gate 2 retrieval ·
+Coverage as of Gate 10 (2026-09-03): Gate 1 insert · Gate 2 retrieval ·
 Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA · Gate 5 the SQLSA ·
 Gate 6 searched UPDATE and DELETE.
 
@@ -148,12 +148,12 @@ Gate 6 searched UPDATE and DELETE.
 
 | Topic | Owner | Reqs | Status |
 |---|---|---|---|
-| Dynamic statement inventory | 007 | | spec |
-| `SQLDA`, names buffer, collation buffer | 007 | | spec |
-| `SQLDA` field encodings and type codes | 007 | | spec |
+| Dynamic statement inventory | 007 | G10: PREPARE/DESCRIBE/EXECUTE; no RELEASE, DESCRIBE INPUT, EXECUTE IMMEDIATE, dynamic cursors | partial |
+| `SQLDA`, names buffer, collation buffer | 007 | G10: SQLDA + names buffer at v300+; collation buffer sized only | partial |
+| `SQLDA` field encodings and type codes | 007 | G10: the numeric family of Table 10-4; no character, decimal or date-time | partial |
 | Character-set ID checking | 007 | | spec |
-| Input parameters and output variables | 007 | | spec |
-| Null values in dynamic SQL | 007 | | spec |
+| Input parameters and output variables | 007 | G10: output via var_ptr; `?` bound; DESCRIBE INPUT out | partial |
+| Null values in dynamic SQL | 007 | G10: null_info on describe, ind_ptr on execute | tested |
 | Dynamic memory allocation of descriptors | 007 | | spec |
 | Dynamic SQL cursors | 007 | | spec |
 | Dynamic SQL program development sequence | 007 | | spec |

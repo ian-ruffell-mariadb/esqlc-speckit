@@ -1,0 +1,66 @@
+/* T1026-T1028 / T1063 — the three refusals that need no malformed descriptor.
+
+   NOTE ON ORDERING, learned the hard way for the fourth time in this project:
+   sqlcode is checked BEFORE any COMMIT or ROLLBACK. §9 p.9-13 says every
+   statement resets the diagnostic area, and transaction control is a statement
+   — so a check placed after a rollback reads the rollback's outcome, not the
+   one under test. The first draft of this fixture put the rollback first and
+   reported sqlcode 0 for a refusal that was working correctly. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+/* Both at count 3: 007 Q9 means a unit gets one sqlvar-count, so the
+   capacity refusal is driven by num_entries rather than by the declared
+   size. That is the honest way round anyway — ESQLC-7002 compares
+   num_entries against what PREPARE reported, not against sizeof. */
+EXEC SQL INCLUDE SQLDA (da1, 3);
+EXEC SQL INCLUDE SQLDA (da3, 3);
+EXEC SQL BEGIN DECLARE SECTION;
+  char stmt_text[81];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  int bad = 0;
+  short k = 0;
+  strcpy(stmt_text, "SELECT k, n32, n64 FROM dynamic_numerics WHERE k = 1");
+
+  /* ESQLC-7001 — EXECUTE of a name never prepared. */
+  EXEC SQL BEGIN WORK;
+  memcpy(da3.eye_catcher, SQLDA_EYE_CATCHER, 2);
+  da3.num_entries = 3;
+  EXEC SQL EXECUTE never_prepared USING DESCRIPTOR :da3;
+  if (sqlcode != -7001) {
+    printf("FAIL 7001: sqlcode=%ld want -7001\n", sqlcode); bad = 1;
+  }
+
+  /* ESQLC-7002 — num_entries below the count PREPARE reported. Three columns,
+     capacity one. Checked before any rollback. */
+  memcpy(da1.eye_catcher, SQLDA_EYE_CATCHER, 2);
+  da1.num_entries = 1;
+  EXEC SQL PREPARE s1 FROM :stmt_text;
+  if (sqlcode != 0) { printf("FAIL: prepare sqlcode=%ld\n", sqlcode); return 1; }
+  EXEC SQL DESCRIBE s1 INTO :da1;
+  if (sqlcode != -7002) {
+    printf("FAIL 7002: sqlcode=%ld want -7002\n", sqlcode); bad = 1;
+  }
+
+  /* ESQLC-7003 — var_ptr left NULL. Refused rather than allocated for:
+     FR-007.8 makes it the program's, so filling it in would take ownership the
+     manual gives away. */
+  EXEC SQL DESCRIBE s1 INTO :da3;
+  if (sqlcode != 0) { printf("FAIL: describe sqlcode=%ld\n", sqlcode); return 1; }
+  da3.sqlvar[0].var_ptr = &k;
+  da3.sqlvar[1].var_ptr = 0;           /* the one under test */
+  da3.sqlvar[2].var_ptr = 0;
+  EXEC SQL EXECUTE s1 USING DESCRIPTOR :da3;
+  if (sqlcode != -7003) {
+    printf("FAIL 7003: sqlcode=%ld want -7003\n", sqlcode); bad = 1;
+  }
+
+  EXEC SQL ROLLBACK WORK;              /* last, deliberately */
+  printf("sqlda_refusals %s\n", bad ? "BAD" : "ok (7001, 7002, 7003)");
+  return bad;
+}

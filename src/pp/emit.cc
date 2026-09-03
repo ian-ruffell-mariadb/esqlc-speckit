@@ -345,6 +345,8 @@ std::string emit(const std::string &file, const ScanResult &sr,
     bool sqlsa_pending     = false;
     int  sqlsa_version     = 0;
     bool structures_seen   = false;
+    bool sqlda_types_done  = false;   // Gate 10: types once per unit
+    unsigned sqlda_count   = 0;       // Gate 10: 007 Q9 — one count per unit
     int  structures_version = 2;   // FR-005.10: version 2 absent a directive
 
     // A #line directive must begin a line — only whitespace may precede the #.
@@ -505,8 +507,31 @@ std::string emit(const std::string &file, const ScanResult &sr,
             std::string nb;  unsigned nbsize = 0;
             if (args.size() > 3) { nb = args[2]; nbsize =
                 (unsigned)std::strtoul(args[3].c_str(), nullptr, 10); }
+            // 007 Q9, raised by Gate 10. Example 10-1 parameterises the count
+            // while Table 10-2 has the directive generate ONE type named
+            // SQLDA_TYPE, and p.10-30 uses sizeof(struct SQLDA_TYPE). Those
+            // cannot all hold for two descriptors of different sizes.
+            //
+            // Emitting the type once at the first count silently truncates the
+            // second descriptor — a buffer overflow the program cannot see.
+            // Emitting it twice is a redefinition error. A distinct tag per
+            // descriptor contradicts Table 10-2. So this refuses rather than
+            // picking one, per Principle I.
+            if (sqlda_types_done && count != sqlda_count) {
+                d.error("ESQLC-1012", k.pos,
+                        "a second INCLUDE SQLDA in this unit asks for sqlvar-count " +
+                        std::to_string(count) + " where the first asked for " +
+                        std::to_string(sqlda_count) +
+                        ". Table 10-2 generates one type named SQLDA_TYPE, so two "
+                        "counts cannot both hold; the manual does not say how "
+                        "(007 Q9). Use the same count for both, or one descriptor "
+                        "and §10 p.10-30's malloc idiom");
+                continue;
+            }
             line_directive(k.pos.line);
-            o << sqlda_layout(args[0], count, nb, nbsize);
+            o << sqlda_layout(args[0], count, nb, nbsize, !sqlda_types_done);
+            sqlda_types_done = true;
+            sqlda_count = count;
             at_line_start = true;
             continue;
         }
