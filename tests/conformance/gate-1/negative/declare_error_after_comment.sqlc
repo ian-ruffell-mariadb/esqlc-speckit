@@ -1,0 +1,19 @@
+/* The tokenizer advances line and column through comment text so a diagnostic
+   AFTER a multi-line comment still points at the right place. That is the only
+   thing decl.cc's line tracking affects — the #line directives in emitted C
+   come from the scanner, not from here — so this negative is the only test
+   that can observe it.
+
+   Without adv() inside the comment body, the error below is reported four
+   lines early, at the comment's opening line instead of the bad declaration. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short ok_before;
+  /* a comment
+     spanning
+     four
+     lines */
+  decimal bad_after[10];
+EXEC SQL END DECLARE SECTION;
+int main(void) { return 0; }
