@@ -28,6 +28,7 @@ add_executable(esqlcpp
     src/pp/emit.cc
     src/pp/whenever.cc
     src/pp/sqlsa.cc
+    src/pp/charset.cc
 )
 target_include_directories(esqlcpp PRIVATE src/pp)
 

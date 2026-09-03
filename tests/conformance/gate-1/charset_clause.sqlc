@@ -1,0 +1,17 @@
+/* T813 — the clause is INFIX: §2 p.2-22 writes
+     char CHARACTER SET ISO88591 type_picx1[11];
+   so it sits between the type keyword and the name, not after it.
+   `CHARACTER SET [IS] charset` per p.2-24, keywords uppercase. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  char CHARACTER SET ISO88592 c_l2[9];
+  char CHARACTER SET IS ISO88597 c_greek[9];
+  char plain[9];
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL INSERT INTO charsets (k, c_l2, c_greek, c_l1)
+           VALUES (:k, :c_l2, :c_greek, :plain);
+  return 0;
+}

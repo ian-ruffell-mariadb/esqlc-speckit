@@ -31,3 +31,16 @@ CREATE TABLE typed (
   ts       TIMESTAMP    NULL DEFAULT NULL,
   PRIMARY KEY (k)
 ) ENGINE=InnoDB;
+
+-- Gate 8 (T811): one column per mappable character set, plus one whose charset
+-- deliberately disagrees with what charset_family.sqlc declares, so the
+-- retrieval check (ESQLC-2015) has something real to refuse.
+DROP TABLE IF EXISTS charsets;
+CREATE TABLE charsets (
+  k       SMALLINT     NOT NULL,
+  c_l1    CHAR(8)      CHARACTER SET latin1  NULL,   -- SQL/MP ISO88591 (approx)
+  c_l2    CHAR(8)      CHARACTER SET latin2  NULL,   -- SQL/MP ISO88592
+  v_kr    VARCHAR(10)  CHARACTER SET euckr   NULL,   -- SQL/MP KSC5601
+  c_greek CHAR(8)      CHARACTER SET greek   NULL,   -- SQL/MP ISO88597
+  PRIMARY KEY (k)
+) ENGINE=InnoDB;

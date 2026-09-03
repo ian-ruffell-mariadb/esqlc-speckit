@@ -1,0 +1,16 @@
+/* T814 — the clause inside a VARCHAR structure, as §2 p.2-22 and p.2-25 show:
+     struct { short len; char CHARACTER SET KANJI val[11]; } emp_name;
+   Gate 7's VARCHAR shape check is positional, so three extra tokens in the
+   middle of it is exactly where that check breaks. KSC5601 here rather than
+   KANJI, which SD-14 refuses. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  struct { short len; char CHARACTER SET KSC5601 val[11]; } v_kr;
+  short v_ind;
+EXEC SQL END DECLARE SECTION;
+int main(void) {
+  EXEC SQL INSERT INTO charsets (k, v_kr) VALUES (:k, :v_kr :v_ind);
+  return 0;
+}

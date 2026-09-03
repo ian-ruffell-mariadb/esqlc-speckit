@@ -327,5 +327,34 @@ run_case timestamp_to_char "$RT/timestamp_to_char.sqlc" 0 \
 run_case int_overflow_8300 "$RT/int_overflow_8300.sqlc" 0 \
   && ok "int_overflow_8300 — 1264 maps to -8300, no fabricated 1031 (DIV-054)"
 
+# --- Gate 8 (T847-T852) character sets ----------------------------------
+mdb < "$FIX/seed.sql" >/dev/null
+
+# THE fixture. Fails until character_set_client is binary: the runtime
+# inherits latin1 and the server transcodes parameter bytes to the column's
+# set. FR-002.30's byte-verbatim guarantee has only ever been tested against
+# ASCII, where that transcoding is the identity. DIV-055.
+run_case charset_high_bytes "$RT/charset_high_bytes.sqlc" 0 \
+  && ok "charset_high_bytes — a byte above 0x7F survives (FR-002.30, DIV-055)"
+
+run_case charset_roundtrip_1byte "$RT/charset_roundtrip_1byte.sqlc" 0 \
+  && ok "charset_roundtrip_1byte — ISO88592, no terminator (FR-002.28)"
+
+# Documents an absence: the charset-ID check of §10 p.10-11 is not
+# reproducible, because result metadata reports the result set's charset rather
+# than the column's. DIV-055.
+
+# The fixture that settles what len counts. length() is 4 where char_length()
+# is 2 on the server, so a len of 2 would look reasonable and nothing else in
+# the project could tell.
+run_case charset_roundtrip_2byte "$RT/charset_roundtrip_2byte.sqlc" 0 \
+  && ok "charset_roundtrip_2byte — len is 4 BYTES, not 2 characters"
+
+run_case charset_null "$RT/charset_null.sqlc" 0 \
+  && ok "charset_null — indicator on a charset VARCHAR (FR-002.16)"
+
+run_case charset_family "$RT/charset_family.sqlc" 0 \
+  && ok "charset_family — bytes verbatim; a set mismatch is NOT refused (DIV-055)"
+
 echo "tier2: $pass passed, $fail failed"
 exit $(( fail > 0 ))

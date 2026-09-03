@@ -220,3 +220,98 @@ The slice's ten, plus:
 13. `DIV-055` resolved; the correction to Gates 1–7 recorded outside it too.
 14. **SD-1 marked resolved** after seven gates as provisional.
 15. `docs/traceability.md` charset row no longer `spec`.
+
+---
+
+## Implementation report — 2026-09-03
+
+10/10 ctest, 53 Tier 2 cases, 141 Tier 1 assertions, 30 negatives, 38
+diagnostics registered. All six Phase D′ mutations caught, each with the
+mutation verified present and the binary verified changed **by content hash**.
+
+### The gate's real deliverable was a defect fix
+
+`character_set_client = binary` (T874), and the plan was right to say start
+there. `T852` — every Gate 1–7 Tier 2 fixture under the new client charset —
+passed unchanged, so the gating risk was clear before any parsing work was
+built on it.
+
+The exposure was more varied than the plan claimed, and the detail matters:
+
+| | |
+|---|---|
+| `latin1 → latin2` `E1E9` | `E1E9` — unchanged, by luck |
+| `latin1 → latin2` `B0B1` | `B03F` — silent substitution |
+| `latin1 → euckr` `B0A1` | `A1C6A2AE` — silently re-encoded, length changed |
+
+Under Gate 7's strict mode an *unmappable* byte errors loudly (1366) — which is
+how `charset_high_bytes` failed before the fix. A byte that maps to something
+**different** does not error, and the multibyte re-encoding is valid at the
+destination, so nothing notices. FR-002.30 has claimed byte-verbatim binding
+since Gate 1 and held it only for ASCII.
+
+### T875 was not implementable, and the test found it
+
+The plan asserted that *"result metadata carries `charsetnr`, so the runtime can
+perform"* §10 p.10-11's character-set ID check. Measured, it cannot:
+`MYSQL_FIELD.charsetnr` reports the **result set's** charset, not the column's.
+A `euckr` column and a `latin2` column selected together both report 224
+(`utf8mb4`) under a default client charset and 63 (`binary`) under Gate 8's.
+
+The information was never available, before or after this slice. So the check is
+absent, `ESQLC-2015` is registered and deliberately never emitted, and
+`rt/charset_family.sqlc` now **pins the absence** — it asserts the bytes arrive
+verbatim and says in its own comment that if a future slice implements the check
+this fixture will fail and should be rewritten. That is the one silent failure
+Gate 8 does not close, and `DIV-055` says so.
+
+It also belongs elsewhere: p.10-11 describes the SQLDA's `precision` field,
+which is feature 007, and the preprocessor cannot know a column's charset
+without the schema access NFR-001.2 forbids. Feature 006's `INVOKE` reads the
+schema and is where the check can live.
+
+### A surviving mutation proved a whole component dead
+
+`KSC5601 → sjis` survived every test. The reason: with T875 reverted, nothing
+called `esqlc_rt_charset_name()`, so the entire runtime charset table was dead
+code — as was `charset_sync.sh`, which compared the live preprocessor table
+against a table with no consumer.
+
+**Both are deleted.** A table that looks authoritative and is consulted by
+nothing is worse than no table, and the sync guard would have given false
+assurance about it. Two components the plan listed do not exist, and that is a
+deviation worth naming rather than quietly shipping.
+
+The descriptor still carries the charset id, because FR-002.4 requires the
+association to be recorded and 007 needs it for the SQLDA. **It is declarative
+at runtime** — nothing reads it — and `rt.h` now says exactly that where the
+table used to be.
+
+### Two findings during implementation
+
+**The clause had to be stripped from emitted C.** §1 p.1-2 says *"The C
+compiler accepts the CHARACTER SET clause in a host-variable declaration"* — on
+NonStop it is a *C compiler extension*, so the preprocessor could leave it in
+place. gcc and clang have no such extension, so `char CHARACTER SET ISO88591
+a[9];` is not valid C here and the clause is consumed like `#pragma SQL` rather
+than passed through like every other byte of a C region (FR-001.19). Newlines
+inside the clause are preserved so `#line` stays honest.
+
+**T864 made `ESQLC-2002` unreachable, briefly.** Rewriting the `VARCHAR` shape
+check to tolerate the clause, I required `short` as part of the shape — so an
+`int len` field failed the shape match and came out as `ESQLC-2003` "not a
+VARCHAR structure", losing the specific advice p.2-9 gives. The Gate 7 negative
+caught it immediately. The length field's type is now consumed as any token and
+checked afterwards.
+
+### Not proved, as scoped
+
+`KANJI` and therefore Japanese, refused by SD-14. Four of the nine ISO 8859
+sets, refused as unmapped. `ISO88591` fidelity across 0x80–0x9F, where `latin1`
+is cp1252. `NATIONAL CHARACTER`, out on `KANJI` — and now refused with a message
+naming that dependency rather than "scalar char host variable is not
+implemented", which was true and useless. Collation and all of §11's CPRL.
+
+`len` in characters is now **resolved rather than unproven**: it counts bytes,
+derived from the manual's own `VARCHAR(10)` → `val[11]` arithmetic and pinned by
+a fixture asserting 4 where `char_length()` would say 2.

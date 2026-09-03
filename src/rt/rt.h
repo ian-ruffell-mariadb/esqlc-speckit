@@ -57,6 +57,22 @@ int  esqlc_rt_sqlsa_num_tables(void);
 void esqlc_rt_sqlsa_from_stmt(MYSQL_STMT *st, long rows_used);
 void esqlc_rt_sqlsa_from_table(const char *table, long rows_used);
 
+/* Gate 8 deliberately gives the runtime NO charset table.
+ *
+ * The plan had one, mapping the descriptor's charset id to a MariaDB charset
+ * name, for the §10 p.10-11 ID check. That check turned out not to be
+ * implementable — result metadata reports the result set's charset, never the
+ * column's — and with it gone the table had no consumer at all. A mutation
+ * remapping KSC5601 to sjis survived every test, which is what proved it dead.
+ *
+ * It is deleted rather than kept, because a table that looks authoritative and
+ * is consulted by nothing is worse than no table. Under the binary client
+ * charset the runtime does not need the name: bytes go verbatim and the
+ * column's own set governs. The descriptor still carries the id, because
+ * FR-002.4 requires the association to be recorded and feature 007 needs it for
+ * the SQLDA — it is declarative at runtime, and DIV-055 says so.
+ */
+
 /* cursor.c */
 void esqlc_rt_cursors_release_all(void);   /* FR-003.8 */
 

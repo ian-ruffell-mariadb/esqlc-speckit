@@ -1,0 +1,52 @@
+/* T816 — the fixture this slice exists for.
+   A byte above 0x7F must reach the column unaltered and come back unaltered.
+
+   This FAILS against the code as it stands, and not because the CHARACTER SET
+   clause is missing. The runtime sets no client character set, so it inherits
+   latin1, and the server transcodes parameter bytes from latin1 to the
+   column's set. Measured on the server:
+
+       latin1 -> euckr   B0A1B0A2  ->  A1C6A2AEA1C63F
+       binary -> euckr   B0A1B0A2  ->  B0A1B0A2
+
+   Four bytes become seven, ending in the 3F that MariaDB substitutes for a
+   character it cannot map. FR-002.30 has claimed byte-verbatim binding since
+   Gate 1 and has only ever been tested against ASCII, where latin1
+   transcoding is the identity. DIV-055. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  char  c_l2[9];        /* CHAR(8), so width 8 */
+  char  back[9];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  int i;
+  EXEC SQL BEGIN WORK;
+  k = 90;
+  /* 'A', 0xA9, then six more ASCII. 0xA9 is what a transcode would move. */
+  memcpy(c_l2, "A\xA9""CDEFGH", 8);
+  EXEC SQL INSERT INTO charsets (k, c_l2) VALUES (:k, :c_l2);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+
+  k = 90;
+  memset(back, 0, sizeof back);
+  EXEC SQL SELECT c_l2 INTO :back FROM charsets WHERE k = :k;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+
+  if (memcmp(back, c_l2, 8) != 0) {
+    printf("FAIL: bytes altered in transit\n  sent:");
+    for (i = 0; i < 8; i++) printf(" %02X", (unsigned char)c_l2[i]);
+    printf("\n  got: ");
+    for (i = 0; i < 8; i++) printf(" %02X", (unsigned char)back[i]);
+    printf("\n");
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("charset_high_bytes ok\n");
+  return 0;
+}

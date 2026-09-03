@@ -1,0 +1,11 @@
+/* T823 — KANJI. The keyword is recognised; the manual names a script and no
+   encoding. MariaDB offers sjis, cp932, ujis and eucjpms, differing in byte
+   length and repertoire, and a wrong choice stores different characters than
+   the program wrote rather than failing. The gap is the manual's, so this is
+   a different code from ESQLC-2013. SD-14, DIV-055. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  char CHARACTER SET KANJI emp_name[21];
+EXEC SQL END DECLARE SECTION;
+int main(void) { return 0; }

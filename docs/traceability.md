@@ -10,7 +10,7 @@ topics — a slice proves the spine, never the breadth. Marking those `tested`
 would overstate coverage, and leaving them `spec` understates it. Where a row is
 `partial`, the gap is named.
 
-Coverage as of Gate 5 (2026-09-01): Gate 1 insert · Gate 2 retrieval ·
+Coverage as of Gate 8 (2026-09-03): Gate 1 insert · Gate 2 retrieval ·
 Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA · Gate 5 the SQLSA ·
 Gate 6 searched UPDATE and DELETE.
 
@@ -28,7 +28,7 @@ Gate 6 searched UPDATE and DELETE.
 |---|---|---|---|
 | Declare section syntax and placement | 002 | G1 | tested |
 | Host variable naming rules | 002 | G1 | tested |
-| SQL↔C character type mapping (Table 2-1) | 002 | G1 char[]; G7 VARCHAR struct + date-time as char; no CHARACTER SET (002 Q4) | partial |
+| SQL↔C character type mapping (Table 2-1) | 002 | G1/G8: char[] and VARCHAR with a charset; no NCHAR, no CHAR_AS_ARRAY | partial |
 | SQL↔C numeric/date-time type mapping (Table 2-2) | 002 | G7: 16/32/64-bit, float, double; no decimal or fixed-point (002 Q2/Q3) | partial |
 | Data conversion and warning conditions | 002 | G2: cross-family refused; warnings never fired (DIV-042) | partial |
 | `CAST` in dynamic SQL | 007 | | spec |
@@ -43,7 +43,7 @@ Gate 6 searched UPDATE and DELETE.
 | `INVOKE` directive and generated structures | 006 | | spec |
 | `INVOKE` with indicator variables | 006 | | spec |
 | `INVOKE` with SQLCI | 008 | | spec |
-| Character set association with host variables | 002 | | spec |
+| Character set association with host variables | 002 | G8: ISO8859-1/2/7/8/9 and KSC5601; KANJI and 8859-3/4/5/6 refused (DIV-055) | partial |
 
 ## Section 3 — Statements and Directives
 

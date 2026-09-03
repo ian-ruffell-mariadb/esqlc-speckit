@@ -21,3 +21,10 @@ DELETE FROM typed;
 INSERT INTO typed (k, i32, i64, f4, f8, vc, ts) VALUES
   (1,  2147483647, 9223372036854775807,  1.5,  2.25, 'ACME WIDGETS',      '2026-03-04 05:06:07'),
   (2, -2147483648, -9223372036854775807, -1.5, -2.25, 'BOLT WORKS',       '2026-03-04 05:06:07');
+
+-- Gate 8 (T812). 0xB0A1 0xB0A2 are two EUC-KR syllables: four bytes, two
+-- characters, which is what makes len's units observable. 0xA9 is a high byte
+-- in latin2 (a soft hyphen in 8859-2) that latin1 transcoding would alter.
+DELETE FROM charsets;
+INSERT INTO charsets (k, c_l1, c_l2, v_kr) VALUES
+  (1, 0x4142434445464748, 0x41A9434445464748, 0xB0A1B0A2);

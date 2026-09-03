@@ -1,0 +1,48 @@
+/* T820 — this fixture documents an ABSENCE, and pins it so the absence is
+   deliberate rather than forgotten.
+
+   The plan wanted a refusal here: §10 p.10-11 says SQL/MP checks a host
+   variable's declared character set against the column's expected set, and
+   ESQLC-2015 was registered for it. Measured, the information does not exist.
+   MYSQL_FIELD.charsetnr reports the RESULT SET's charset, not the column's:
+   selecting a euckr column and a latin2 column together, both report 224
+   (utf8mb4) under a default client charset and 63 (binary) under Gate 8's.
+
+   So a euckr column read into an ISO88592 host variable delivers correct bytes
+   that the program will misinterpret, and nothing refuses it. That is the one
+   silent failure Gate 8 does not close. DIV-055 records it; feature 006's
+   INVOKE reads the schema and is where the check can live.
+
+   What this fixture asserts is what IS true: the bytes arrive unaltered. If a
+   future slice implements the check, this fixture will fail and should be
+   rewritten to expect -2015 — which is the point of pinning it. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  char CHARACTER SET ISO88592 wrong_set[11];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  k = 1;                               /* a seeded euckr value */
+  memset(wrong_set, 0, sizeof wrong_set);
+  EXEC SQL SELECT v_kr INTO :wrong_set FROM charsets WHERE k = :k;
+  if (sqlcode != 0) {
+    printf("FAIL: sqlcode=%ld. If this is -2015 the check was implemented and "
+           "this fixture needs rewriting to expect it.\n", sqlcode);
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  /* The bytes are the column's, unaltered — correct, and misinterpretable. */
+  if (memcmp(wrong_set, "\xB0\xA1\xB0\xA2", 4) != 0) {
+    printf("FAIL: bytes altered; byte-verbatim retrieval is broken\n");
+    EXEC SQL ROLLBACK WORK;
+    return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("charset_family ok — bytes verbatim, set mismatch NOT refused (DIV-055)\n");
+  return 0;
+}

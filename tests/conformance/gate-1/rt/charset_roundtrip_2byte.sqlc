@@ -1,0 +1,48 @@
+/* T818 — the fixture that settles what `len` counts.
+   0xB0A1 and 0xB0A2 are two EUC-KR syllables: FOUR bytes, TWO characters.
+   Measured on the server, length() is 4 where char_length() is 2.
+
+   len must come back as 4. The manual derives this rather than stating it:
+   §2 p.2-20 declares VARCHAR (10) CHARACTER SET KANJI and p.2-22 generates
+   val[11] for it, which is FR-002.6's l+1 with l = 10. Ten characters in a
+   double-byte set would need 21 bytes, so VARCHAR(n) is n BYTES and len is in
+   the same units as the array it describes.
+
+   A len of 2 would look entirely reasonable and no other test in this project
+   could tell the difference. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  struct { short len; char CHARACTER SET KSC5601 val[11]; } v_kr;
+  struct { short len; char CHARACTER SET KSC5601 val[11]; } back;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  k = 92;
+  memcpy(v_kr.val, "\xB0\xA1\xB0\xA2", 4);
+  v_kr.len = 4;                        /* four bytes, two characters */
+  EXEC SQL INSERT INTO charsets (k, v_kr) VALUES (:k, :v_kr);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+
+  k = 92;
+  memset(&back, 0, sizeof back);
+  back.len = 999;                      /* must be overwritten */
+  EXEC SQL SELECT v_kr INTO :back FROM charsets WHERE k = :k;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (back.len != 4) {
+    printf("FAIL: len=%d, want 4 (BYTES). 2 would be characters.\n",
+           (int)back.len);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  if (memcmp(back.val, "\xB0\xA1\xB0\xA2", 4) != 0) {
+    printf("FAIL: EUC-KR bytes altered in transit\n");
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("charset_roundtrip_2byte ok (len=4 bytes, 2 characters)\n");
+  return 0;
+}
