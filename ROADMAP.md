@@ -136,6 +136,35 @@ no previous gate has had to grow.
 Character sets, `DECIMAL`, `SETSCALE` and the four conversion warnings stay out,
 on 002 Q4, Q2/Q3 and Q1 respectively.
 
+**Gate 8 — character sets**, specified in [specs/gate-8.md](specs/gate-8.md)
+and **ready to plan**. The first slice that closes a gap in shipped code rather
+than adding capability: Gate 7 put `VARCHAR` and `char` binding into `main`
+while explicitly not knowing whether `len` counts bytes or characters, and
+sidestepped it by keeping every fixture single-byte. That avoidance is honest
+and it is also latent wrongness, unproven for exactly the programs where it
+decides whether data survives.
+
+002 Q4 is the last open question that needs no external document — the spec says
+*"likely a new divergence"*, not *"needs `SQLRM`"*.
+
+Two findings shape it. **`len` counts bytes**, derived rather than decided:
+p.2-20's `VARCHAR (10) CHARACTER SET KANJI` becomes `val[11]` at p.2-22, which
+is FR-002.6's `l+1` with `l = 10`, so `VARCHAR(n)` is n bytes and a double-byte
+set simply encodes fewer characters in them. And **`KANJI` is refused rather
+than mapped**: MariaDB offers `sjis`, `cp932`, `ujis` and `eucjpms`, differing
+in byte length and repertoire, and "KANJI" names a script rather than an
+encoding. A wrong choice does not fail, it silently stores different characters
+than the program wrote — the least detectable error this project can produce.
+
+`KSC5601` → `euckr` is the multibyte mapping it does implement, defensible
+because KS C 5601 is the character set and EUC-KR its encoding rather than two
+guesses at one script. That is what lets the slice settle `len` at all.
+
+**Gate 8 also closes SD-1**, carried provisionally through all seven previous
+gates: p.2-24 calls `UNKNOWN` *"an unknown single-byte character set"*
+*"equivalent to omitting the CHARACTER SET clause"*, so the connection default
+is the faithful reading and not a convenience.
+
 **The full Phase 2 gate** additionally needs positioned `UPDATE`/`DELETE`,
 cursor stability, message rendering, and the four mandatory conversion warnings
 from §2. None of the five gates proves any of that — see each one's non-proof
