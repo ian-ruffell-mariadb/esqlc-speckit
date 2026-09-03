@@ -245,6 +245,40 @@ Everything `INVOKE` generates is then read back by the parsers Gates 7 and 8
 built, which makes those gates the test of what this one emits — one path to be
 right rather than two.
 
+**Gate 10 — the `SQLDA`**, specified in [specs/gate-10.md](specs/gate-10.md)
+and **ready to plan**. The third and last SQL/MP structure: `SQLCA` at Gate 4,
+`SQLSA` at Gate 5, and after this every structure a program can allocate has a
+byte-exact generated layout.
+
+It is also the first slice where the *program* owns the structure and the
+runtime fills it in. The `SQLCA` and `SQLSA` are declared at a fixed size and
+registered; an `SQLDA` is `malloc`ed at a size the program computes from a count
+the runtime told it.
+
+007 turned out far better resolved than its position in the roadmap suggests —
+five of eight questions resolved and a sixth provisionally — which is what makes
+a first slice possible. The two that remain, `WHENEVER` over a dynamic statement
+(Q5, shared with 005) and `data_len = 0`'s scale-ignoring idiom (Q7), are both
+avoided by construction rather than narrowed. And **002 Q7's missing `sqlh` is
+avoided the same way Gate 8 avoided multibyte `len`**: `precision` carries a
+character-set ID for `CHAR` and `VARCHAR` only, so a slice describing **numeric
+columns** never needs the values.
+
+Two findings from the manual's own worked code shape it. §10 p.10-30 allocates
+`sizeof(struct SQLDA_TYPE) + ((num_entries - 1) * sizeof(struct SQLVAR_TYPE))`,
+so the generated structure declares **`sqlvar[1]`** — not a fixed array, not a
+C99 flexible member, either of which breaks that arithmetic silently. And that
+idiom is what makes `DIV-040` survivable: a program using `sizeof` allocates
+correctly at 24 or 40 bytes because it never mentions either.
+
+**It is where the `SQLSA`'s `prepare` arm finally fires.** Gate 5 emitted that
+arm as layout only and never populated it; FR-007.23 derives the descriptor and
+buffer sizes from exactly those fields.
+
+The ABI grows for the first time since Gate 3 — three entry points — because a
+prepared statement is long-lived state addressed by name across three
+statements, the same shape that forced the cursor entry points.
+
 **Gate 3:** a nontrivial application — a dynamic SQL query tool over the App. A
 sample database, of the shape §10 develops — works end to end.
 
