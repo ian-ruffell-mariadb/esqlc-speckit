@@ -1,8 +1,42 @@
 # Roadmap
 
 Eight features, four phases. Each phase has a gate — a demonstrable capability,
-not a date. A phase does not start until its gate predecessor's exit criteria
-pass and `/speckit.analyze` is clean.
+not a date.
+
+**Phase entry rule, amended 2026-09-03.** A phase does not start until its gate
+predecessor's exit criteria pass and `/speckit.analyze` is clean — *except* that
+a phase may start when the predecessor's remaining criteria are blocked solely
+on an **external dependency**, provided each blocked item is named here as a
+standing debt with the dependency that blocks it.
+
+The original rule assumed the external documents would arrive. Eight gates have
+now routed around `SQLRM`, and Phase 2's gate cannot pass without it: positioned
+`UPDATE`/`DELETE` and cursor stability need 004 Q3, the four conversion warnings
+need `DIV-042`, and message rendering needs 005 Q6. Holding Phase 3 hostage to
+documents that may never come is a worse outcome than a recorded gap, and it
+would stall work that is fully specified and testable today.
+
+This is the phase-level analogue of Constitution VIII, which lets a *slice*
+proceed while its specs stay `Clarifying`. The conditions are deliberately the
+same in spirit: the blockage must be external rather than a matter of unfinished
+thinking, and it must be written down rather than assumed.
+
+**It is not a licence to skip work that is merely hard.** A criterion blocked by
+an undecided question belongs in a slice decision under Principle VIII, not
+here. Only an unobtainable document qualifies.
+
+### Phase 2's carried debt
+
+| Blocked criterion | Dependency |
+|---|---|
+| Positioned `UPDATE`/`DELETE`; cursor stability | 004 Q3 — `SQLRM` |
+| The four §2 conversion warnings | 002 Q1 / 005 Q4 — `DIV-042`, `SQLRM` |
+| Message rendering (`SQLCADISPLAY`, `SQLSADISPLAY`) | 005 Q6 — the SQL message file |
+| Transaction semantics outside / nested `BEGIN WORK` | 003 Q1, Q2 — `SQLRM` |
+
+Three external documents are now outstanding: **`SQLRM`** (statement syntax and
+semantics), **`CPG`** (the C compiler's pragma set and whether `fixed` is real),
+and **`sqlh`** (the published character-set IDs — 002 Q7, raised by Gate 8).
 
 ```
 Phase 1  ──▶ Phase 2  ──▶ Phase 3  ──▶ Phase 4
@@ -182,6 +216,34 @@ work item with two specs if the team is small.
 |---|---|
 | [006 INVOKE](specs/006-invoke-schema-gen/spec.md) | Schema-derived structure generation, indicator arrays, `CHAR_AS_STRING`/`CHAR_AS_ARRAY` |
 | [007 Dynamic SQL](specs/007-dynamic-sql/spec.md) | `PREPARE`/`EXECUTE`/`DESCRIBE`, `SQLDA` + names + collation buffers, dynamic cursors, legacy v1/v2 descriptors |
+
+**Gate 9 — `INVOKE`**, specified in [specs/gate-9.md](specs/gate-9.md) and
+**ready to plan**. Entered under the amended phase rule above, with Phase 2's
+debt recorded there. The first slice where the preprocessor reads something
+other than source, and the first where a structure a customer program uses is
+*generated* rather than hand-written and inspected. Eight gates taught the
+preprocessor to read declarations; this one makes it write them.
+
+The architectural crux is already answered by the spec. FR-006.2e wants read
+access to the invoked object at preprocess time; NFR-001.2 forbids the
+preprocessor depending on MariaDB at all. NFR-006.2's **optional-by-cache**
+resolves it: the preprocessor reads a committed JSON cache and never opens a
+socket, so its dependency set does not change. 006 Q4 — the cache's format and
+invalidation — is explicitly *"a build-reproducibility decision, not a manual
+question"*, so it is ours to make: SD-15 commits the cache, SD-16 says the
+preprocessor cannot detect a stale one and does not pretend to.
+
+**It also closes Gate 8's gap from the other end.** Gate 8 could not check a
+host variable's declared character set against its column, because result
+metadata reports the result set's charset rather than the column's. FR-006.2b
+has `INVOKE` emit the `CHARACTER SET` clause from the cached definition, so a
+*generated* declaration cannot disagree with its column — there is nothing to
+check because there is nothing to disagree. Hand-written declarations stay
+exposed, and `DIV-055` is narrowed rather than closed.
+
+Everything `INVOKE` generates is then read back by the parsers Gates 7 and 8
+built, which makes those gates the test of what this one emits — one path to be
+right rather than two.
 
 **Gate 3:** a nontrivial application — a dynamic SQL query tool over the App. A
 sample database, of the shape §10 develops — works end to end.
