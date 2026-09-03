@@ -798,6 +798,85 @@ def assert_invoke_line_fidelity(out: str, src_name: str) -> None:
           f"{len(src)}-line file — it drifted into generated text")
 
 
+
+def assert_sqlda_constants(out: str) -> None:
+    """T1040 — the five published constants, with the widened sqlvar."""
+    check("FR-007.6", '#define SQLDA_EYE_CATCHER "D1"' in out,
+          "the eye-catcher is D1")
+    check("FR-007.6", "#define SQLDA_HEADER_LEN 4" in out,
+          "eye_catcher (2) + num_entries (2)")
+    # DIV-040. Example 10-1's four shorts and four longs are 24 on NonStop and
+    # 40 once the address fields hold real pointers. FR-007.6 states 40.
+    check("FR-007.6", "#define SQLDA_SQLVAR_LEN 40" in out,
+          "sqlvar is 40 under DIV-040, NOT the published 24")
+    check("FR-007.7", "#define SQLDA_NAMESBUF_OVHD_LEN 11" in out,
+          "the names-buffer overhead is 11: length 2 + table 8 + period 1")
+    check("FR-007.26", "#define SQLDA_COLLBUF_OVHD_LEN 4" in out,
+          "the collation-buffer overhead is 4")
+    compiles(out, "sqlda_constants")
+
+
+def assert_sqlda_layout(out: str) -> None:
+    """T1041-T1044 — Example 10-1's order, every offset, and the count."""
+    flat = " ".join(out.split())
+    # T1041: four 16-bit fields, then four address-width ones, in this order.
+    # int16_t rather than `short`: Gate 5's lesson — the manual's `short` is
+    # 16-bit and an explicit width is the only way that holds on every host.
+    order = ["int16_t data_type;", "int16_t data_len;", "int16_t precision;",
+             "int16_t null_info;"]
+    pos = [flat.find(f) for f in order]
+    check("FR-007.6a", all(p >= 0 for p in pos) and pos == sorted(pos),
+          f"Example 10-1's field order must hold; found at {pos}")
+    # T1042: every field's offsetof, and `reserved` at 32 and last. FR-007.6b
+    # says programs must not assume the entry ends after cprl_ptr, so this
+    # assertion is what stops a future edit reclaiming those eight bytes.
+    for field, off in (("data_type", 0), ("data_len", 2), ("precision", 4),
+                       ("null_info", 6), ("var_ptr", 8), ("ind_ptr", 16),
+                       ("cprl_ptr", 24), ("reserved", 32)):
+        check("NFR-007.3", f"SQLVAR_TYPE, {field}) == {off}" in flat,
+              f"offsetof({field}) must be asserted as {off}")
+    check("NFR-007.3", "sizeof(struct SQLVAR_TYPE) == SQLDA_SQLVAR_LEN" in flat,
+          "the sqlvar total must be asserted")
+    # DIV-058: DIV-040's widening raises SQLVAR_TYPE's alignment from 4 to 8,
+    # so sqlvar begins at 8 rather than at the published SQLDA_HEADER_LEN of 4.
+    # Measured: published sqlvar=4/align=4, widened sqlvar=8/align=8.
+    check("NFR-007.3", "SQLDA_TYPE, sqlvar) == 8" in flat,
+          "sqlvar's real offset must be asserted — 8 under DIV-040, not the "
+          "published header length of 4 (DIV-058)")
+    check("FR-007.6", "SQLDA_HEADER_LEN == 4" in flat,
+          "SQLDA_HEADER_LEN keeps its published value: Table 10-2 defines it as "
+          "the length of the header fields, which is still 4")
+    # T1044: the count is the DIRECTIVE's. Not a flexible member, which would
+    # make sizeof exclude the array and p.10-30's malloc under-allocate by one
+    # entry; and not a fixed 16, which the SQLDA has no cap to justify.
+    check("FR-007.6a", "sqlvar[3];" in flat,
+          "INCLUDE SQLDA (da3, 3) must declare sqlvar[3]")
+    check("FR-007.6a", "sqlvar[];" not in flat,
+          "a C99 flexible member would make p.10-30's malloc arithmetic "
+          "under-allocate by one entry")
+    compiles(out, "sqlda_layout")
+
+
+def assert_sqlda_buffers(out: str) -> None:
+    """T1045 — the two published size formulas."""
+    flat = " ".join(out.split())
+    # names = (30 + 11) * 2 = 82; the buffer is a SIBLING array (Example 10-1).
+    check("FR-007.7a", "nbuf[82]" in flat,
+          "names buffer is (name_string_size + 11) * sqlvar_count = (30+11)*2")
+    check("FR-007.7a", "char nbuf" in flat,
+          "the names buffer is declared alongside the structure, not inside it")
+    compiles(out, "sqlda_buffers")
+
+
+def assert_sqlda_prepare_hostvar(out: str) -> None:
+    """T1046 — the statement text is a host variable like any other."""
+    d = {x["name"]: x for x in descriptors(out)}
+    check("NFR-002.2", "_Static_assert(sizeof(stmt_text) == 81" in " ".join(out.split()),
+          "the statement buffer's capacity must be asserted")
+    check("FR-002.9", "esqlc_prepare(" in out,
+          "PREPARE must reach the ABI entry point")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: spec_assertions.py <esqlcpp>", file=sys.stderr)
@@ -895,6 +974,18 @@ def main() -> int:
     out = emit(pp, FIX / "invoke_placeholders.sqlc")
     if out:
         assert_invoke_placeholders(out)
+    out = emit(pp, FIX / "sqlda_constants.sqlc")
+    if out:
+        assert_sqlda_constants(out)
+    out = emit(pp, FIX / "sqlda_layout.sqlc")
+    if out:
+        assert_sqlda_layout(out)
+    out = emit(pp, FIX / "sqlda_buffers.sqlc")
+    if out:
+        assert_sqlda_buffers(out)
+    out = emit(pp, FIX / "sqlda_prepare_hostvar.sqlc")
+    if out:
+        assert_sqlda_prepare_hostvar(out)
 
     for f in failures:
         print(f"FAIL {f}")

@@ -106,7 +106,7 @@ requested.
 | `ESQLC-6002` | No schema source available (no connection, no cache) | error | Principle III |
 | `ESQLC-6003` | Column type has no mapping in the 002 table | error | `[§2 pp.2-3..2-4]` |
 | `ESQLC-6004` | Column name cannot be transformed into a valid, unique C identifier | error | `[§2 p.2-19]` |
-| `ESQLC-6005` | Cached schema is stale relative to a reachable database | warn | Principle III |
+| `ESQLC-6005` | Cached schema is stale relative to a reachable database | **not implementable** — needs a reachable database; see below | Principle III |
 | `ESQLC-6006` | `INVOKE` outside declaration position | **redundant** — see below | `[§3 p.3-2]` |
 | `ESQLC-6007` | Indicator name would collide with its host variable (30/31-char column under default suffix) | error | `[§2 p.2-22]` `[DIV-050]` |
 | `ESQLC-6008` | No read access to the invoked object at preprocess time | error | `[§2 p.2-19]` |

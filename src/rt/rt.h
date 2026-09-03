@@ -73,6 +73,9 @@ void esqlc_rt_sqlsa_from_table(const char *table, long rows_used);
  * the SQLDA — it is declarative at runtime, and DIV-055 says so.
  */
 
+/* sqlsa.c, Gate 10 — the prepare arm. Gate 5 emitted it as layout only. */
+void esqlc_rt_sqlsa_prepare_arm(int output_num, long output_names_len);
+
 /* cursor.c */
 void esqlc_rt_cursors_release_all(void);   /* FR-003.8 */
 

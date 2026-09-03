@@ -22,6 +22,10 @@ static const Handler kHandlers[] = {
     {"INCLUDE STRUCTURES",    PosClass::Decl, nullptr},   // Gate 5: version selection
     {"INCLUDE SQLSA",         PosClass::Decl, nullptr},   // Gate 5
     {"INVOKE",                PosClass::Decl, nullptr},   // Gate 9
+    {"INCLUDE SQLDA",         PosClass::Decl, nullptr},   // Gate 10
+    {"PREPARE",               PosClass::Exec, nullptr},   // Gate 10
+    {"DESCRIBE",              PosClass::Exec, nullptr},   // Gate 10
+    {"EXECUTE",               PosClass::Exec, nullptr},   // Gate 10
     {"SELECT",                PosClass::Exec, nullptr},   // Gate 2: single-row only
     {"DECLARE CURSOR",        PosClass::Decl, nullptr},   // Gate 3: read-only
     {"OPEN",                  PosClass::Exec, nullptr},
@@ -34,11 +38,7 @@ static const Handler kHandlers[] = {
     // FOR UPDATE and WHERE CURRENT OF are refused inside their handlers rather
     // than here: both are clauses of a statement, not keywords of their own,
     // so the dispatch table cannot see them.
-    {"INCLUDE SQLDA",      PosClass::Decl, "007 (dynamic SQL)"},
-    {"PREPARE",            PosClass::Exec, "007 (dynamic SQL)"},
-    {"EXECUTE",            PosClass::Exec, "007 (dynamic SQL)"},
     {"EXECUTE IMMEDIATE",  PosClass::Exec, "007 (dynamic SQL)"},
-    {"DESCRIBE",           PosClass::Exec, "007 (dynamic SQL)"},
     {"DESCRIBE INPUT",     PosClass::Exec, "007 (dynamic SQL)"},
     {"RELEASE",            PosClass::Exec, "007 (dynamic SQL)"},
     {"CONTROL",            PosClass::Decl, "008 (NonStop compatibility surface)"},

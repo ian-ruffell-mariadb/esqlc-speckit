@@ -1,0 +1,63 @@
+/* T1021 — the FR-007.8 fixture, and the only way that requirement is
+   observable.
+
+   FR-007.8 reserves eye_catcher and var_ptr to the program, and §10 p.10-59
+   has the program initialise ind_ptr too — "ind_ptr must always be
+   initialized, even when the program does not handle null values". FR-007.6b
+   adds that a program must not assume the entry ends after cprl_ptr, so
+   `reserved` is the program's as well.
+
+   Recognisable sentinels go in before DESCRIBE and must come out unchanged. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLDA (da, 3);
+EXEC SQL BEGIN DECLARE SECTION;
+  char stmt_text[81];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  int i, bad = 0;
+  void *sentinel_v = (void *)0x1111111111111111ULL;
+  void *sentinel_i = (void *)0x2222222222222222ULL;
+  void *sentinel_r = (void *)0x3333333333333333ULL;
+
+  memcpy(da.eye_catcher, SQLDA_EYE_CATCHER, 2);
+  da.num_entries = 3;
+  for (i = 0; i < 3; i++) {
+    da.sqlvar[i].var_ptr  = sentinel_v;
+    da.sqlvar[i].ind_ptr  = sentinel_i;
+    da.sqlvar[i].reserved = sentinel_r;
+  }
+
+  strcpy(stmt_text, "SELECT k, n32, n64 FROM dynamic_numerics WHERE k = 1");
+  EXEC SQL BEGIN WORK;
+  EXEC SQL PREPARE s1 FROM :stmt_text;
+  if (sqlcode != 0) { printf("FAIL: prepare sqlcode=%ld\n", sqlcode); return 1; }
+  EXEC SQL DESCRIBE s1 INTO :da;
+  if (sqlcode != 0) { printf("FAIL: describe sqlcode=%ld\n", sqlcode); return 1; }
+
+  if (memcmp(da.eye_catcher, SQLDA_EYE_CATCHER, 2) != 0) {
+    printf("FAIL: DESCRIBE wrote eye_catcher\n"); bad = 1;
+  }
+  for (i = 0; i < 3; i++) {
+    if (da.sqlvar[i].var_ptr != sentinel_v) {
+      printf("FAIL: DESCRIBE wrote var_ptr[%d] — FR-007.8 reserves it\n", i);
+      bad = 1;
+    }
+    if (da.sqlvar[i].ind_ptr != sentinel_i) {
+      printf("FAIL: DESCRIBE wrote ind_ptr[%d] — p.10-59 reserves it\n", i);
+      bad = 1;
+    }
+    if (da.sqlvar[i].reserved != sentinel_r) {
+      printf("FAIL: DESCRIBE wrote reserved[%d] — FR-007.6b preserves it\n", i);
+      bad = 1;
+    }
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("sqlda_untouched %s\n", bad ? "BAD" : "ok");
+  return bad;
+}

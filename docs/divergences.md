@@ -697,7 +697,7 @@ either, so there is nothing working to preserve.
 
 ## DIV-057 — The names buffer's 8-byte table-name budget
 
-**Status:** proposed · **Feature:** 007 · **Citation:** `[SQLPM/C §10 p.10-7]`
+**Status:** accepted · **Feature:** 007 · **Citation:** `[SQLPM/C §10 p.10-7]`
 
 **NonStop:** `DESCRIBE` returns each column's name to the names buffer as a
 `VARCHAR` item, and the buffer is sized `(name-string-size + 11) × sqlvar-count`.
@@ -708,6 +708,12 @@ bytes), and period separator (1 byte)"* — an 8-character Guardian file name.
 real table name does not fit the budget the published formula reserves. The
 formula's constant cannot change: `SQLDA_NAMESBUF_OVHD_LEN` is 11 and programs
 size their buffers with it.
+
+**Resolved (Gate 10): the qualifier is OMITTED.** A truncated table name looks
+valid and is wrong, which is the least detectable of the three failures; an
+absent qualifier is what a single-table query wanted anyway and is visibly
+incomplete for a join; refusing would make nearly every MariaDB table
+undescribable. So `DESCRIBE` writes the bare column name as its `VARCHAR` item.
 
 **Rationale:** the three available choices are all visible to a program reading
 the buffer, so the choice has to be made and recorded rather than discovered.
@@ -722,3 +728,49 @@ and read the names buffer.
 **Migration:** a program that parses `TABLE.COLUMN` out of the names buffer
 needs review. One that uses the buffer only for display is unaffected beyond the
 qualifier's presence or absence.
+
+## DIV-058 — Widening the `SQLDA`'s address fields moves `sqlvar` off the published header length
+
+**Status:** accepted · **Feature:** 007 · **Citation:** `[SQLPM/C §10 pp.10-5, 10-7]`, `[DIV-040]`
+
+**NonStop:** Table 10-2 publishes `SQLDA_HEADER_LEN` as 4 — *"the length in
+bytes of the SQLDA structure header fields `eye_catcher` and `num_entries`"* —
+and Example 10-1's `sqlvar` follows immediately. With the published 32-bit
+`long` address fields, `SQLVAR_TYPE` aligns to 4 and `sqlvar` does begin at
+offset 4.
+
+**Here:** `DIV-040` widens the four address fields to hold real pointers, which
+raises `SQLVAR_TYPE`'s alignment from 4 to 8 and moves `sqlvar` to offset **8**.
+Measured on this host:
+
+| | `offsetof(sqlvar)` | `sizeof(SQLVAR_TYPE)` | alignment |
+|---|---|---|---|
+| published, 32-bit `long` | 4 | 24 | 4 |
+| widened, `DIV-040` | **8** | 40 | 8 |
+
+`SQLDA_HEADER_LEN` keeps its published value of 4, because Table 10-2 defines it
+as the length of the header *fields*, which is unchanged.
+
+**Rationale:** the alternative is packing the structure so `sqlvar` starts at 4,
+and that is worse. The program dereferences `sqlda->sqlvar[i].var_ptr` directly,
+so packing hands it a misaligned pointer load — harmless on x86-64 and a fault
+on a strict-alignment target. Natural alignment also keeps §10 p.10-30's
+`sizeof(SQLDA_TYPE) + ((n - 1) * sizeof(SQLVAR_TYPE))` correct with no
+adjustment, which is the allocation idiom the manual itself uses.
+
+**Detection:** `offsetof(struct SQLDA_TYPE, sqlvar)` is 8, not
+`SQLDA_HEADER_LEN`. The generated declaration asserts both values so the
+difference is visible at compile time rather than discovered at run time.
+
+**Migration:** a program that reaches an entry as `&sqlda->sqlvar[i]` — which is
+every example in §10 — is unaffected. One that computes
+`(char *)sqlda + SQLDA_HEADER_LEN + i * SQLDA_SQLVAR_LEN` lands four bytes
+early on every entry and must use the member instead. That arithmetic was
+already fragile under `DIV-040`'s width change; this makes it wrong for a second
+reason.
+
+**Found by an assertion, not by review.** The Gate 10 plan stated that four
+`int16_t` fields followed by four pointers *"align naturally to 40, so the total
+is reached without"* packing — true of `SQLVAR_TYPE` in isolation, and it says
+nothing about the member's offset inside `SQLDA_TYPE`. The `offsetof` assertion
+NFR-007.3 demanded failed on the first build and named the cause.

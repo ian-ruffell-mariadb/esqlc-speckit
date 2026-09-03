@@ -165,8 +165,8 @@ MariaDB counterpart.
 | `ESQLC-5006` | `INCLUDE STRUCTURES` omitted — version 2 assumed | info | `[§9 p.9-1]` |
 | `ESQLC-5007` | `SQLSA VERSION CURRENT` without a reachable `SQLGETSYSTEMVERSION` | error | `[§9 p.9-2]` |
 | `ESQLC-5008` | `WHENEVER` action references an undeclared identifier | error | `[§9 p.9-6]` |
-| `ESQLC-5009` | `SQLSA` read after a statement class that leaves it undefined | warn | `[§9 p.9-13]` |
-| `ESQLC-5010` | Reading an `SQLSA` field that holds a sentinel | ignore | `[DIV-011]` |
+| `ESQLC-5009` | `SQLSA` read after a statement class that leaves it undefined | **not implementable** — needs dataflow over the host program | `[§9 p.9-13]` |
+| `ESQLC-5010` | Reading an `SQLSA` field that holds a sentinel | **not implementable** — same as 5009, and `ignore` besides | `[DIV-011]` |
 
 `ESQLC-5009` is a warning rather than an error because the manual says
 "undefined", not "prohibited", and legacy programs may read it harmlessly.

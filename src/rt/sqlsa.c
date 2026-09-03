@@ -213,6 +213,30 @@ void esqlc_rt_sqlsa_from_table(const char *table, long rows_used) {
     }
 }
 
+/* T1093 / FR-005.18, FR-007.23 — the prepare arm.
+ *
+ * Gate 5 emitted this arm as a layout and never populated it: dynamic SQL is
+ * where §9 p.9-13 says it fills in, and there was no dynamic SQL. It is a UNION
+ * arm, so writing it overwrites the dml arm — which is correct, because only
+ * the arm matching the last statement's class is meaningful (FR-005.21a).
+ *
+ * Two of six fields. input_num, input_names_len and name_map_len need DESCRIBE
+ * INPUT, and sql_statement_type needs FR-005.24's published values 1-8; both
+ * are out of Gate 10's scope, so the arm goes from wholly sentinel to
+ * two-thirds sentinel. Progress, not completion. */
+void esqlc_rt_sqlsa_prepare_arm(int output_num, long output_names_len) {
+    char *p = g_sqlsa;
+    if (!p) return;
+    /* The prepare arm starts at the union offset, which both arms share. */
+    put16(p, SQLSA_OFF_UNION + 0, -1);                       /* input_num */
+    put16(p, SQLSA_OFF_UNION + 2, -1);                       /* input_names_len */
+    put16(p, SQLSA_OFF_UNION + 4, (int16_t)output_num);
+    put16(p, SQLSA_OFF_UNION + 6, (int16_t)output_names_len);
+    put16(p, SQLSA_OFF_UNION + 8, -1);                       /* name_map_len */
+    put16(p, SQLSA_OFF_UNION + 10, -1);                      /* sql_statement_type */
+    put32(p, SQLSA_OFF_UNION + 12, -1);                      /* output_collations_len */
+}
+
 int esqlc_rt_sqlsa_version(void) { return g_sqlsa ? g_version : 0; }
 
 /* The table tests/harness/sqlsa_layout_sync.sh reads. Every entry here must

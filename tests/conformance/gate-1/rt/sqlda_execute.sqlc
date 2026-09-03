@@ -1,0 +1,46 @@
+/* T1023 — the end-to-end proof: a descriptor the runtime filled is one the
+   program can use. Allocate buffers, set var_ptr and ind_ptr, EXECUTE, read
+   the values back. FR-007.2, FR-007.15. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLDA (da, 3);
+EXEC SQL BEGIN DECLARE SECTION;
+  char stmt_text[81];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  short   k = 0;   short   k_i = 0;
+  int     n32 = 0; short   n32_i = 0;
+  long long n64 = 0; short n64_i = 0;
+  int bad = 0;
+
+  memcpy(da.eye_catcher, SQLDA_EYE_CATCHER, 2);
+  da.num_entries = 3;
+  strcpy(stmt_text, "SELECT k, n32, n64 FROM dynamic_numerics WHERE k = 2");
+
+  EXEC SQL BEGIN WORK;
+  EXEC SQL PREPARE s2 FROM :stmt_text;
+  if (sqlcode != 0) { printf("FAIL: prepare sqlcode=%ld\n", sqlcode); return 1; }
+  EXEC SQL DESCRIBE s2 INTO :da;
+  if (sqlcode != 0) { printf("FAIL: describe sqlcode=%ld\n", sqlcode); return 1; }
+
+  /* The program allocates and sets var_ptr — FR-007.8. */
+  da.sqlvar[0].var_ptr = &k;   da.sqlvar[0].ind_ptr = &k_i;
+  da.sqlvar[1].var_ptr = &n32; da.sqlvar[1].ind_ptr = &n32_i;
+  da.sqlvar[2].var_ptr = &n64; da.sqlvar[2].ind_ptr = &n64_i;
+
+  EXEC SQL EXECUTE s2 USING DESCRIPTOR :da;
+  if (sqlcode != 0) { printf("FAIL: execute sqlcode=%ld\n", sqlcode); return 1; }
+
+  if (k != 2)    { printf("FAIL: k=%d want 2\n", k); bad = 1; }
+  if (n32 != -1) { printf("FAIL: n32=%d want -1\n", n32); bad = 1; }
+  /* row 2's n64 is NULL, so the implementation writes -1 through ind_ptr. */
+  if (n64_i != -1) { printf("FAIL: n64 indicator=%d want -1\n", n64_i); bad = 1; }
+  EXEC SQL ROLLBACK WORK;
+  printf("sqlda_execute %s\n", bad ? "BAD" : "ok");
+  return bad;
+}

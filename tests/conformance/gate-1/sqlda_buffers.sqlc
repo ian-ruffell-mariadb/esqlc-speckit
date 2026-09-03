@@ -1,0 +1,10 @@
+/* T1013 — the names and collation buffers, sized by the published formulas.
+   §10 p.10-7: names = (name-string-size + 11) * sqlvar-count, and
+   collation = (max-collation-size + 4) * sqlvar-count. Both are declared
+   ALONGSIDE the structure, not inside it — Example 10-1 shows
+   `char names_buffer[name-string-size];` as a sibling. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLDA (dab, 2, nbuf, 30);
+int main(void) { return 0; }

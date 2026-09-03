@@ -62,3 +62,18 @@ int esqlc_stmt_exec(const char *body, size_t len,
 
 long esqlc_sqlcode(void) { return g_sqlcode; }
 int  esqlc_fs_detail(long *c) { if (c) *c = 0; return 0; }
+
+/* Gate 10 — the stub satisfies the dynamic entry points so a stub-linked
+ * fixture still links. It prepares nothing and describes nothing; NFR-001.2's
+ * point is that the ABI is satisfiable with no database at all. */
+int esqlc_prepare(const char *name, const char *sql, size_t sql_len) {
+    (void)name; (void)sql; (void)sql_len; return 0;
+}
+int esqlc_describe(const char *name, void *sqlda, int num_entries, int version,
+                   char *names_buf, size_t names_len) {
+    (void)name; (void)sqlda; (void)num_entries; (void)version;
+    (void)names_buf; (void)names_len; return 0;
+}
+int esqlc_execute(const char *name, void *sqlda, int num_entries, int version) {
+    (void)name; (void)sqlda; (void)num_entries; (void)version; return 0;
+}

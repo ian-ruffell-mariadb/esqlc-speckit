@@ -345,6 +345,8 @@ std::string emit(const std::string &file, const ScanResult &sr,
     bool sqlsa_pending     = false;
     int  sqlsa_version     = 0;
     bool structures_seen   = false;
+    bool sqlda_types_done  = false;   // Gate 10: types once per unit
+    unsigned sqlda_count   = 0;       // Gate 10: 007 Q9 — one count per unit
     int  structures_version = 2;   // FR-005.10: version 2 absent a directive
 
     // A #line directive must begin a line — only whitespace may precede the #.
@@ -405,6 +407,132 @@ std::string emit(const std::string &file, const ScanResult &sr,
                     "'" + k.keyword + "' must appear in " +
                     (h->where == PosClass::Decl ? "declaration" : "executable") +
                     " position");
+            continue;
+        }
+
+        // ---- PREPARE / DESCRIBE / EXECUTE (T1076-T1078) -----------------
+        // Each takes a statement NAME, as cursors do (Gate 3), for the same
+        // reason: the name is already the source language's identifier and a
+        // runtime table keyed by it needs no state in generated code.
+        if (k.keyword == "PREPARE" || k.keyword == "DESCRIBE" ||
+            k.keyword == "EXECUTE") {
+            const std::string sname = name_after_verb(k.body, k.keyword.c_str());
+            if (sname.empty()) {
+                d.error("ESQLC-1012", k.pos,
+                        k.keyword + " requires a statement name");
+                continue;
+            }
+            line_directive(k.pos.line);
+            o << "do {\n";
+            if (k.keyword == "PREPARE") {
+                // PREPARE s FROM :hostvar — the text is the program's buffer,
+                // carried verbatim (NFR-001.1). The runtime never rewrites it.
+                if (k.hostvars.size() != 1) {
+                    d.error("ESQLC-1012", k.pos,
+                            "PREPARE takes exactly one host variable holding the "
+                            "statement text");
+                    o << "} while (0);\n";
+                    continue;
+                }
+                const HostVar *hv = find(vars, k.hostvars[0].name);
+                if (!hv) {
+                    d.error("ESQLC-1014", k.pos,
+                            "host variable ':" + k.hostvars[0].name +
+                            "' is not declared in a declare section");
+                    o << "} while (0);\n";
+                    continue;
+                }
+                o << "  esqlc_prepare(\"" << sname << "\", " << hv->name
+                  << ", strlen(" << hv->name << "));\n";
+            } else {
+                // DESCRIBE s INTO :da / EXECUTE s USING DESCRIPTOR :da — the
+                // descriptor is the program's storage, so the generated call
+                // passes its address and its num_entries.
+                if (k.hostvars.size() != 1) {
+                    d.error("ESQLC-1012", k.pos,
+                            k.keyword + " takes exactly one SQLDA reference");
+                    o << "} while (0);\n";
+                    continue;
+                }
+                const std::string da = k.hostvars[0].name;
+                const char *fn = (k.keyword == "DESCRIBE")
+                                   ? "esqlc_describe" : "esqlc_execute";
+                o << "  " << fn << "(\"" << sname << "\", &" << da
+                  << ", " << da << ".num_entries, "
+                  << (structures_version >= 300 ? structures_version : 300);
+                if (k.keyword == "DESCRIBE") o << ", 0, 0";
+                o << ");\n";
+            }
+            close_stmt(k.keyword);
+            continue;
+        }
+
+        // ---- INCLUDE SQLDA (T1075) --------------------------------------
+        // §10 p.10-3: INCLUDE SQLDA ( sqlda-name [ , sqlvar-count ] … ). The
+        // examples pass more — (dummy_da, 1, dummy_namesbuf, 1) — so the list
+        // is name, count, and optionally a names buffer and its size.
+        if (k.keyword == "INCLUDE SQLDA") {
+            std::vector<std::string> args;
+            {
+                std::size_t lp = k.body.find('(');
+                std::size_t rp = k.body.find(')', lp == std::string::npos ? 0 : lp);
+                if (lp == std::string::npos || rp == std::string::npos) {
+                    d.error("ESQLC-1012", k.pos,
+                            "INCLUDE SQLDA requires a parenthesised parameter list: "
+                            "(sqlda-name [, sqlvar-count [, names-buffer, size]])");
+                    continue;
+                }
+                std::string inner = k.body.substr(lp + 1, rp - lp - 1);
+                std::string cur;
+                for (char c : inner) {
+                    if (c == ',') { args.push_back(cur); cur.clear(); }
+                    else if (!std::isspace((unsigned char)c)) cur += c;
+                }
+                if (!cur.empty()) args.push_back(cur);
+            }
+            if (args.empty() || args[0].empty()) {
+                d.error("ESQLC-1012", k.pos, "INCLUDE SQLDA requires a name");
+                continue;
+            }
+            unsigned count = 1;                      // p.10-3 makes it optional
+            if (args.size() > 1 && !args[1].empty())
+                count = (unsigned)std::strtoul(args[1].c_str(), nullptr, 10);
+            if (count == 0) {
+                d.error("ESQLC-1012", k.pos,
+                        "sqlvar-count must be at least 1; §10 p.10-30 allocates "
+                        "sizeof(SQLDA_TYPE) + ((n-1) * sizeof(SQLVAR_TYPE)), which "
+                        "needs one entry in the declaration");
+                continue;
+            }
+            std::string nb;  unsigned nbsize = 0;
+            if (args.size() > 3) { nb = args[2]; nbsize =
+                (unsigned)std::strtoul(args[3].c_str(), nullptr, 10); }
+            // 007 Q9, raised by Gate 10. Example 10-1 parameterises the count
+            // while Table 10-2 has the directive generate ONE type named
+            // SQLDA_TYPE, and p.10-30 uses sizeof(struct SQLDA_TYPE). Those
+            // cannot all hold for two descriptors of different sizes.
+            //
+            // Emitting the type once at the first count silently truncates the
+            // second descriptor — a buffer overflow the program cannot see.
+            // Emitting it twice is a redefinition error. A distinct tag per
+            // descriptor contradicts Table 10-2. So this refuses rather than
+            // picking one, per Principle I.
+            if (sqlda_types_done && count != sqlda_count) {
+                d.error("ESQLC-1012", k.pos,
+                        "a second INCLUDE SQLDA in this unit asks for sqlvar-count " +
+                        std::to_string(count) + " where the first asked for " +
+                        std::to_string(sqlda_count) +
+                        ". Table 10-2 generates one type named SQLDA_TYPE, so two "
+                        "counts cannot both hold; the manual does not say how "
+                        "(007 Q9). Use the same count for both, or one descriptor "
+                        "and §10 p.10-30's malloc idiom");
+                continue;
+            }
+            line_directive(k.pos.line);
+            o << sqlda_layout(args[0], count, nb, nbsize, !sqlda_types_done);
+            sqlda_types_done = true;
+            sqlda_count = count;
+            at_line_start = true;
             continue;
         }
 

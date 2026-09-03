@@ -1,0 +1,11 @@
+/* T1011 — the five published constants. §10 p.10-5 and Table 10-2.
+   SQLDA_SQLVAR_LEN is 40 and NOT the published 24: DIV-040 widens the four
+   address fields so they can hold real pointers, and FR-007.6 already states
+   the widened value. Example 10-1's four shorts and four longs are 8 + 16 = 24
+   on NonStop and 8 + 32 = 40 here, which is the arithmetic DIV-040 predicted
+   before that page was read. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLDA (da, 1);
+int main(void) { return 0; }

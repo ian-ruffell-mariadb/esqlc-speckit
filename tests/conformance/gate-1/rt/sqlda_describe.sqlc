@@ -1,0 +1,67 @@
+/* T1016-T1020, T1024 — PREPARE, DESCRIBE, and everything DESCRIBE writes.
+   Three numeric columns: SMALLINT NOT NULL, INTEGER NOT NULL, BIGINT NULL. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INCLUDE STRUCTURES SQLSA VERSION 300;
+EXEC SQL INCLUDE SQLCA;
+EXEC SQL INCLUDE SQLSA;
+EXEC SQL INCLUDE SQLDA (da, 3, nbuf, 40);
+EXEC SQL BEGIN DECLARE SECTION;
+  char stmt_text[81];
+EXEC SQL END DECLARE SECTION;
+
+static int chk(const char *what, long got, long want) {
+  if (got == want) return 0;
+  printf("FAIL %s: got %ld want %ld\n", what, got, want);
+  return 1;
+}
+
+int main(void) {
+  int bad = 0;
+  memcpy(da.eye_catcher, SQLDA_EYE_CATCHER, 2);
+  da.num_entries = 3;
+  strcpy(stmt_text, "SELECT k, n32, n64 FROM dynamic_numerics WHERE k = 1");
+
+  EXEC SQL BEGIN WORK;
+  EXEC SQL PREPARE s1 FROM :stmt_text;
+  if (sqlcode != 0) { printf("FAIL: prepare sqlcode=%ld\n", sqlcode); return 1; }
+
+  /* FR-007.23 / FR-005.18 — the SQLSA's prepare arm, which Gate 5 emitted as
+     a layout and never populated. output_num is the third field of the arm. */
+  bad |= chk("SQLSA prepare output_num", sqlsa.u.prepare.output_num, 3);
+  if (sqlsa.u.prepare.output_names_len <= 0) {
+    printf("FAIL: output_names_len=%d, want > 0\n",
+           (int)sqlsa.u.prepare.output_names_len);
+    bad = 1;
+  }
+
+  EXEC SQL DESCRIBE s1 INTO :da;
+  if (sqlcode != 0) { printf("FAIL: describe sqlcode=%ld\n", sqlcode); return 1; }
+
+  /* Table 10-4's published values (FR-007.18). */
+  bad |= chk("data_type[0] SMALLINT", da.sqlvar[0].data_type, 130);
+  bad |= chk("data_type[1] INTEGER",  da.sqlvar[1].data_type, 132);
+  bad |= chk("data_type[2] BIGINT",   da.sqlvar[2].data_type, 134);
+
+  /* SD-17: byte length in bits 8:15, scale in 0:7. */
+  bad |= chk("data_len[0] bytes", (da.sqlvar[0].data_len >> 8) & 0xFF, 2);
+  bad |= chk("data_len[1] bytes", (da.sqlvar[1].data_len >> 8) & 0xFF, 4);
+  bad |= chk("data_len[2] bytes", (da.sqlvar[2].data_len >> 8) & 0xFF, 8);
+  bad |= chk("data_len[0] scale", da.sqlvar[0].data_len & 0xFF, 0);
+
+  /* SD-18: decimal digits, not bits. */
+  bad |= chk("precision[0]", da.sqlvar[0].precision, 5);
+  bad |= chk("precision[1]", da.sqlvar[1].precision, 10);
+  bad |= chk("precision[2]", da.sqlvar[2].precision, 19);
+
+  /* FR-007.14: negative exactly for the nullable column. */
+  bad |= chk("null_info[0] NOT NULL", da.sqlvar[0].null_info, 0);
+  bad |= chk("null_info[1] NOT NULL", da.sqlvar[1].null_info, 0);
+  bad |= chk("null_info[2] NULL",     da.sqlvar[2].null_info, -1);
+
+  EXEC SQL ROLLBACK WORK;
+  printf("sqlda_describe %s\n", bad ? "BAD" : "ok");
+  return bad;
+}
