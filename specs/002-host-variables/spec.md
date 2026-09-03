@@ -167,6 +167,7 @@ unresolved question below.
 | Q4 | How are `KANJI`, `KSC5601`, and the ISO 8859 sets mapped onto MariaDB character sets, and what happens for `UNKNOWN`? | FR-002.4, .8 | unresolved — likely a new divergence |
 | Q5 | Are a C storage class (`auto`/`extern`/`static`), a class modifier (`const`/`volatile`), and an initialiser permitted on a host variable definition inside a declare section? | FR-002.1, .2 | unresolved — ISO/IEC 9075-5:1999 §16.4 permits all three; the HP manual is silent. Customer code plausibly uses `static`, so silence is not safe to read as prohibition |
 | Q6 | Are comma-separated multiple declarators permitted in one host variable definition? | FR-002.1 | unresolved — the standard permits them throughout §16.4; the HP manual's examples only ever show one per statement |
+| Q7 | What are the published character-set ID values? §10 p.10-6 puts the ID in the SQLDA's `precision` field and p.10-11 says the declarations come from the `sqlh` file, which is not in this manual. | FR-002.4, feature 007's `SQLDA` | unresolved — `[EXTERNAL — sqlh]`. A third external dependency alongside `SQLRM` and `CPG`. Gate 8 uses a project-internal numbering, which is private to the runtime and sufficient until 007 needs the real values for the descriptor. |
 
 Q1 is the important one. Warning codes are what customer error handlers branch
 on, so inventing them silently would breach Principle III; inventing them

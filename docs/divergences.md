@@ -581,3 +581,54 @@ a silently stored wrong value. `src/rt/context.c` now appends
 `STRICT_TRANS_TABLES` alongside `PAD_CHAR_TO_FULL_LENGTH` (`DIV-052`), by the
 same append-not-assign rule so no other mode the deployment set is clobbered.
 A mutation dropping it is caught by `rt/int_overflow_8300`.
+
+## DIV-055 — Character-set mapping, and byte-verbatim binding
+
+**Status:** proposed · **Feature:** 002, 003 · **Citation:** `[SQLPM/C §2 pp.2-3, 2-24]`, `[SQLPM/C §10 pp.10-6, 10-11]`
+
+**NonStop:** a host variable carries `CHARACTER SET ISO8859n` (n = 1..9),
+`KANJI`, `KSC5601`, or `UNKNOWN` (§2 p.2-24). The set describes what the bytes
+in the variable *are*; the SQLDA's `precision` field carries the set's ID, and
+SQL/MP checks that ID against the column's expected set (§10 p.10-11).
+
+**Here:** five of the nine ISO 8859 sets map, one approximately, four not at
+all, and `KANJI` is refused.
+
+| SQL/MP | MariaDB | |
+|---|---|---|
+| `ISO88592`, `ISO88597`, `ISO88598`, `ISO88599` | `latin2`, `greek`, `hebrew`, `latin5` | exact |
+| `ISO88591` | `latin1` | **approximate** — `latin1` is cp1252 |
+| `ISO88593`, `ISO88594`, `ISO88595`, `ISO88596` | — | refused, no counterpart |
+| `KSC5601` | `euckr` | KS C 5601 is the set; EUC-KR its encoding |
+| `KANJI` | — | refused, encoding unspecified |
+| `UNKNOWN` | connection default | p.2-24: "an unknown single-byte character set" |
+
+The connection uses `character_set_client = binary`, so the declared set
+*describes* bytes rather than directing a conversion. A per-parameter charset
+does not exist in the MariaDB protocol — `MYSQL_BIND` has no such field — so
+the only way to honour FR-002.30 is to stop the server transcoding at all.
+
+**Rationale:** `KANJI` names a script, not an encoding, and MariaDB offers
+`sjis`, `cp932`, `ujis` and `eucjpms`, differing in maximum byte length and in
+repertoire. A wrong choice does not fail; it stores different characters than
+the program wrote. Refusing is the only faithful option under Constitution III.
+The four unmapped ISO sets are refused for the different reason that MariaDB has
+no equivalent, and the two diagnostics differ so a user is not sent looking in
+the wrong place.
+
+**Detection:** an out-of-scope set is refused at compile time, with the
+diagnostic naming whether the gap is in the manual (`KANJI`) or in MariaDB (the
+four ISO sets). A byte above 0x7F round-trips unaltered.
+
+**Migration:** a program using `ISO88591`, `2`, `7`, `8`, `9`, `KSC5601` or
+`UNKNOWN` is unaffected. One using `KANJI`, `NATIONAL CHARACTER`, or 8859-3/4/5/6
+does not compile and has no workaround here. One relying on ISO 8859-1
+collation across 0x80–0x9F will sort differently.
+
+**Correction to Gates 1–7.** FR-002.30's byte-verbatim guarantee was, before
+this slice, true only for ASCII: the runtime set no client charset and inherited
+`latin1`, so the server transcoded. Measured, `latin1 → euckr` turns `B0A1B0A2`
+into `A1C6A2AEA1C63F` — seven bytes ending in the `?` substitution. Every
+fixture through Gate 7 is ASCII, where that transcoding is the identity, so the
+guarantee held by accident and was never tested above 0x7F. This is a
+correction to what those gates claimed, not a new limitation.

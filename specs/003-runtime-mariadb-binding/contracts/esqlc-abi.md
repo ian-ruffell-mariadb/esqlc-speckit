@@ -261,7 +261,7 @@ typedef struct {
     signed char scale;       /* SETSCALE or C `fixed`                         */
     unsigned char is_signed;
     unsigned char direction; /* ESQLC_DIR_*                                   */
-    unsigned short charset;  /* SQLDA charset id; 0 = UNKNOWN                 */
+    unsigned short charset;  /* charset id; 0 = UNKNOWN (see the note below)   */
 } esqlc_hostvar_t;
 
 _Static_assert(sizeof(esqlc_hostvar_t) <= 40, "descriptor grew unexpectedly");
@@ -286,9 +286,16 @@ silently diverges from SQL/MP on the commonest column type.
   a null column value is then SQL error 8423 (`ESQLC-4009`) rather than a
   silently zeroed variable.
 
-Fields still not exercised: `scale` (pending 002 Q2/Q3), and `charset` beyond `0`
-(pending 002 Q4; both gates bind `UNKNOWN` as the connection default per slice
-decision SD-1).
+Fields still not exercised: `scale` (pending 002 Q2/Q3).
+
+**`charset` is live as of Gate 8**, and its values are deliberately *not* the
+SQLDA's. §10 p.10-6 puts the real character-set ID in the SQLDA's `precision`
+field, and §10 p.10-11 says those declarations live in the `sqlh` header, which
+this project does not have (002 Q7). So `charset` carries a project-internal id
+that is private to the runtime: `0` still means `UNKNOWN`, i.e. use the
+connection default, which keeps every descriptor Gates 1-7 emitted valid.
+Feature 007 must not inherit this numbering for the `SQLDA` — it needs the
+published values.
 
 ## Open against this contract
 
