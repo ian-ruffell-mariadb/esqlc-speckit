@@ -28,17 +28,17 @@ Gate 6 searched UPDATE and DELETE.
 |---|---|---|---|
 | Declare section syntax and placement | 002 | G1 | tested |
 | Host variable naming rules | 002 | G1 | tested |
-| SQL↔C character type mapping (Table 2-1) | 002 | G1: char[] only; no CHARACTER SET | partial |
-| SQL↔C numeric/date-time type mapping (Table 2-2) | 002 | G1: 16-bit only; no decimal/float/date-time | partial |
+| SQL↔C character type mapping (Table 2-1) | 002 | G1 char[]; G7 VARCHAR struct + date-time as char; no CHARACTER SET (002 Q4) | partial |
+| SQL↔C numeric/date-time type mapping (Table 2-2) | 002 | G7: 16/32/64-bit, float, double; no decimal or fixed-point (002 Q2/Q3) | partial |
 | Data conversion and warning conditions | 002 | G2: cross-family refused; warnings never fired (DIV-042) | partial |
 | `CAST` in dynamic SQL | 007 | | spec |
-| Host variable reference syntax, `INDICATOR`, `TYPE AS` | 002 | G1/G2: refs + INDICATOR; no TYPE AS | partial |
+| Host variable reference syntax, `INDICATOR`, `TYPE AS` | 002 | G1/G2/G6/G7: refs + INDICATOR both directions; no TYPE AS | partial |
 | Fixed-length character rules (null terminator, blank padding) | 002 | G1 insert-side, G2 retrieval-side | tested |
-| Variable-length character (`VARCHAR`) struct form | 002 | | spec |
-| Structures as host variables | 002 | | spec |
+| Variable-length character (`VARCHAR`) struct form | 002 | G7 | tested |
+| Structures as host variables | 002 | G7: VARCHAR shape only; any other structure refused (ESQLC-2003) | partial |
 | Decimal data types and conversion routines | 002 | | spec |
 | Fixed-point types, `SETSCALE`, C `fixed` | 002 | | spec |
-| Date-time and INTERVAL host variables | 002 | | spec |
+| Date-time and INTERVAL host variables | 002 | G7: date-time column into char; no TYPE AS, no INTERVAL | partial |
 | Indicator variables for null values | 002 | G2 | tested |
 | `INVOKE` directive and generated structures | 006 | | spec |
 | `INVOKE` with indicator variables | 006 | | spec |
@@ -67,9 +67,9 @@ Gate 6 searched UPDATE and DELETE.
 | SQL error 8204 (lost open) and recovery | 008 | | spec |
 | Single-row `SELECT` | 004 | G2 | tested |
 | Multirow `SELECT` | 004 | | spec |
-| `INSERT` (incl. nulls, timestamps) | 004 | G1 plain, G6 input indicators; no timestamps | partial |
-| `UPDATE` (single, multiple, null columns) | 004 | G6: searched only; positioned needs 004 Q3/Q7 | partial |
-| `DELETE` (single, multiple) | 004 | G6: searched only; positioned needs 004 Q3/Q7 | partial |
+| `INSERT` (incl. nulls, timestamps) | 004 | G1/G6/G7: plain, nulls via indicator; no timestamp on the write path | partial |
+| `UPDATE` (single, multiple, null columns) | 004 | G6 searched; positioned needs 004 Q3/Q7 | partial |
+| `DELETE` (single, multiple) | 004 | G6 searched; positioned needs 004 Q3/Q7 | partial |
 | Cursor lifecycle and steps | 004 | G3 read-only | tested |
 | PAID requirements per statement | 008 | | spec |
 | Cursor position rules (Table 4-2) | 004 | G3: specified rows only; 004 Q6/Q7 open | partial |

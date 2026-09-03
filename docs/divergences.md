@@ -551,7 +551,7 @@ returns `matched` rather than the sentinel.
 
 ## DIV-054 — SQL error 8300 without its file-system detail
 
-**Status:** proposed · **Feature:** 002, 003 · **Citation:** `[SQLPM/C §2 p.2-5]`
+**Status:** accepted · **Feature:** 002, 003 · **Citation:** `[SQLPM/C §2 p.2-5]`
 
 **NonStop:** an input value too large for its column returns SQL error 8300,
 paired with a file-system detail of 1031 — the Guardian error for a numeric
@@ -574,9 +574,10 @@ would be undetectable — 1031 is a plausible value.
 branches on the file-system detail behind an 8300 needs review, and there is no
 way to make it work unchanged.
 
-**Depends on strict mode.** MariaDB raises 1264 as an error only under
-`STRICT_TRANS_TABLES`; without it the value is truncated and a warning issued,
-which would turn a documented error into a silently stored wrong value. The
-runtime's `sql_mode` handling therefore has to guarantee strict mode, not merely
-hope for it — recorded here because the divergence is only bounded while that
-holds.
+**Depends on strict mode, and Gate 7 makes that guaranteed rather than hoped
+for.** MariaDB raises 1264 as an error only under `STRICT_TRANS_TABLES`; without
+it the value is truncated and a warning issued, turning a documented error into
+a silently stored wrong value. `src/rt/context.c` now appends
+`STRICT_TRANS_TABLES` alongside `PAD_CHAR_TO_FULL_LENGTH` (`DIV-052`), by the
+same append-not-assign rule so no other mode the deployment set is clobbered.
+A mutation dropping it is caught by `rt/int_overflow_8300`.

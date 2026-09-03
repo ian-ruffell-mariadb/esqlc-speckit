@@ -48,6 +48,36 @@ static int bind_input(MYSQL_BIND *b, unsigned long *len,
         b->buffer_length  = v->width;
         b->length         = len;
         return 0;
+    case ESQLC_T_CHAR_VAR:
+        /* T775 — a VARCHAR structure. `addr` is the structure itself, so `len`
+         * is at offset 0 as a short and `val` at offset 2. FR-002.6 fixes that
+         * order and those names, and the emitter asserts the offset per
+         * variable, so this is the published mapping rather than a guess.
+         *
+         * The length sent is the program's `len`, clamped to the declared
+         * capacity: padding is the program's business (FR-002.31), but a `len`
+         * larger than `val` would read past the structure. */
+        {
+            short declared;
+            memcpy(&declared, v->addr, sizeof declared);
+            if (declared < 0) declared = 0;
+            if ((unsigned)declared > v->capacity) declared = (short)v->capacity;
+            *len             = (unsigned long)declared;
+            b->buffer        = (char *)v->addr + 2;
+            b->buffer_type   = MYSQL_TYPE_STRING;
+            b->buffer_length = v->capacity;
+            b->length        = len;
+        }
+        return 0;
+    case ESQLC_T_FLOAT:
+        /* T774 — one family, two widths, the same by-width dispatch the
+         * integer family uses. */
+        b->length = NULL;
+        switch (v->width) {
+        case 4: b->buffer_type = MYSQL_TYPE_FLOAT;  return 0;
+        case 8: b->buffer_type = MYSQL_TYPE_DOUBLE; return 0;
+        default: return -1;
+        }
     case ESQLC_T_INT:
         b->length      = NULL;
         b->is_unsigned = v->is_signed ? 0 : 1;
@@ -188,7 +218,10 @@ int esqlc_stmt_exec(const char *body, size_t body_len,
 
             /* FR-002.22: conversion happens within families, never between. */
             int col_numeric = is_numeric_field(fields[j].type);
-            int hv_numeric  = (v->type == ESQLC_T_INT);
+            /* T774 — FR-002.22. float and double are numeric; a date-time
+             * column is not, which is what lets FR-002.13 bind a TIMESTAMP
+             * into a character host variable without tripping this check. */
+            int hv_numeric  = (v->type == ESQLC_T_INT || v->type == ESQLC_T_FLOAT);
             if (col_numeric != hv_numeric) {
                 esqlc_rt_set_err_code(-2004);   /* ESQLC-2004 */
                 rc = -1; goto done;
@@ -204,6 +237,22 @@ int esqlc_stmt_exec(const char *body, size_t body_len,
                  * helpful null terminator cannot land there (FR-002.28). */
                 rb[j].buffer_length = v->width;
                 rb[j].length        = &rl[j];
+                break;
+            case ESQLC_T_CHAR_VAR:
+                /* T776 — retrieve into `val`; the retrieved length is written
+                 * back into `len` after the fetch. The program's prior `len`
+                 * is not consulted: it is an output, not a capacity limit. */
+                rb[j].buffer        = (char *)v->addr + 2;
+                rb[j].buffer_type   = MYSQL_TYPE_STRING;
+                rb[j].buffer_length = v->capacity;
+                rb[j].length        = &rl[j];
+                break;
+            case ESQLC_T_FLOAT:
+                switch (v->width) {
+                case 4: rb[j].buffer_type = MYSQL_TYPE_FLOAT;  break;
+                case 8: rb[j].buffer_type = MYSQL_TYPE_DOUBLE; break;
+                default: esqlc_rt_set_err_code(-3005); rc = -1; goto done;
+                }
                 break;
             case ESQLC_T_INT:
                 rb[j].is_unsigned = v->is_signed ? 0 : 1;
@@ -272,6 +321,16 @@ int esqlc_stmt_exec(const char *body, size_t body_len,
                 }
             } else if (outv[j]->ind_addr) {
                 *outv[j]->ind_addr = 0;
+            }
+            /* T776 — a retrieved VARCHAR's length. Written whether or not the
+             * program supplied an indicator, and only when the value is not
+             * null: a null leaves `len` alone, because there is no length. */
+            if (!rnull[j] && outv[j]->type == ESQLC_T_CHAR_VAR) {
+                unsigned long got = rl[j];
+                short n;
+                if (got > outv[j]->capacity) got = outv[j]->capacity;
+                n = (short)got;
+                memcpy(outv[j]->addr, &n, sizeof n);
             }
         }
         esqlc_rt_sqlsa_from_stmt(st, 1);   /* one row retrieved */

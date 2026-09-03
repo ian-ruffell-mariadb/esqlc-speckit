@@ -497,7 +497,10 @@ def assert_float_widths(out: str) -> None:
           "double must bind as ESQLC_T_FLOAT — one family, separated by width")
     check("FR-002.10", "f8" in d and int(d["f8"]["width"]) == 8,
           f"double must be width 8, got {d.get('f8', {}).get('width')}")
-    check("FR-002.10", "ESQLC_T_DATETIME" not in out,
+    # code_only, because the fixture's own comment mentions the constant and a
+    # raw text scan matches that. Fourth time a guard in this project has
+    # matched a comment rather than code; code_only exists for exactly this.
+    check("FR-002.10", "ESQLC_T_DATETIME" not in code_only(out),
           "ESQLC_T_DATETIME must stay unused until TYPE AS")
     compiles(out, "float_widths")
 
@@ -512,14 +515,19 @@ def assert_varchar_layout(out: str) -> None:
           f"capacity is the declared val size, 27; got {d.get('vc', {}).get('capacity')}")
     check("FR-002.6", "vc" in d and int(d["vc"]["width"]) == 26,
           f"width is capacity - 1 (SD-10); got {d.get('vc', {}).get('width')}")
+    # The structure is anonymous, so offsetof(struct tag, val) — which the plan
+    # called for — cannot be written in portable C11. sizeof on a member
+    # expression can, and these three together are a stronger proof: len is 2,
+    # val is n, and the whole structure is exactly 2 + n, so there is no padding
+    # anywhere and val must be at offset 2. That is what licenses the runtime
+    # reading val at offset 2.
     flat = " ".join(out.split())
-    for frag, why in (
-        ("len) == 0", "offsetof(len) must be asserted as 0"),
-        ("val) == 2", "offsetof(val) must be asserted as 2"),
-    ):
-        check("NFR-002.2", frag in flat, why)
-    check("FR-002.21", "len) == 2" in flat or "len)==2" in flat,
+    check("FR-002.21", "sizeof(vc.len) == 2" in flat,
           "sizeof(len) must be asserted as 2 — p.2-9 requires short, not int")
+    check("NFR-002.2", "sizeof(vc.val) == 27" in flat,
+          "sizeof(val) must be asserted at the declared capacity")
+    check("NFR-002.2", "__typeof__(vc), val) == 2" in flat,
+          "val's offset must be asserted as 2 — the runtime reads it there")
     compiles(out, "varchar_layout")
 
 

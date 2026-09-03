@@ -238,3 +238,132 @@ The slice's ten, plus:
 13. `DIV-054` resolved; `DIV-001`'s corrected Detection field confirmed against
     the build.
 14. `docs/traceability.md` type-mapping rows no longer say *16-bit only*.
+
+---
+
+## Implementation report — 2026-09-03
+
+All 77 tasks complete. 10/10 ctest; Tier 1 109 assertions and 25 negatives
+clean; Tier 2 48 cases; 35 diagnostics registered.
+
+### The defect the plan predicted, fixed
+
+A hand-declared `long` now compiles. `decl.cc` takes width from the host
+compiler's `sizeof`, so the descriptor claims 8 and the `NFR-002.2` assertion
+measures 8:
+
+```
+_Static_assert(sizeof(big) == 8, "big width drifted");
+```
+
+`DIV-001`'s Detection field was corrected during planning and the correction
+holds against the build.
+
+### T803 — `int` was already working
+
+Confirmed: `decl.cc` already mapped `int` to width 4 and `exec.c` already bound
+widths 2, 4 and 8. `rt/int_widths_roundtrip` is therefore a **regression guard
+for 32-bit, and a proof only for 64-bit**. Recorded because a green result there
+should not be read as evidence this slice built 32-bit support.
+
+### T804 — the plan's `offsetof` assertion was impossible
+
+The plan called for `_Static_assert(offsetof(struct <tag>, val) == 2)`. The
+program's structure is **anonymous** — `struct { short len; char val[27]; } vc;`
+has no tag — so that cannot be written in portable C11.
+
+The first replacement was worse than wrong, it was *plausibly* wrong:
+`sizeof(struct) == 2 + capacity` as a no-padding proof. The structure aligns to
+2 because of `len`, so an odd capacity rounds up — 29 becomes 30 — and a
+**correct** layout fails the check. It failed immediately, which is the only
+reason it did not ship.
+
+What is emitted is `__builtin_offsetof(__typeof__(vc), val) == 2`: the direct
+statement of what the runtime relies on. `__typeof__` is needed for the missing
+tag, and the extension is consistent with existing practice — the `SQLSA`
+emission has used `__attribute__((packed))` since Gate 5.
+
+### T805 — slice decisions as built
+
+SD-1 and SD-2 carried unchanged. SD-10 held: `capacity` is the declared `val`
+size and `width` is `capacity - 1`. SD-11 held: 1264 maps to -8300.
+
+### T806 — `ESQLC-2007` is unreachable, as suspected
+
+Detecting a host-variable declaration *outside* a declare section would need
+whole-program C parsing, which the preprocessor does not do and should not grow.
+A reference to an undeclared variable already produces `ESQLC-1014`, which is
+the case a program actually hits. `ESQLC-2007` stays unimplemented as a
+consequence of the design, not an omission.
+
+### Three defects found by the tests
+
+**A guard matched its own comment.** The `ESQLC_T_DATETIME` check scanned raw
+emitted text, and the fixture's own comment names the constant. Fourth
+occurrence of this class in the project; `code_only()` exists for it and was not
+used. Fixed by using it.
+
+**Error recovery skipped into the middle of a struct.** On an `ESQLC-2002`, the
+scalar rule "skip to the next `;`" lands inside `struct { short len; ... }`,
+because `short len;` has one. The remainder was re-parsed as declarations and
+emitted a spurious `ESQLC-1012` on the closing `}`. One bad declaration produced
+two diagnostics, the second meaningless. Fixed with `skip_struct`, which clears
+the closing brace first.
+
+**The `varchar_len_int` expected column was guessed and wrong.** The diagnostic
+points at the `int` token (column 12), not at the `struct` keyword (column 3).
+The actual behaviour is the better one — it names the offending token — so the
+expectation was corrected rather than the code.
+
+### One defect found and deliberately NOT fixed
+
+**`decl.cc` rejects C comments inside a declare section.** `tokenize()` does not
+skip `/* … */` or `//`, so:
+
+```c
+EXEC SQL BEGIN DECLARE SECTION;
+  char ts[20];   /* an ordinary comment */
+EXEC SQL END DECLARE SECTION;
+```
+
+yields `ESQLC-1012: host variable type '/'`. This is a **Principle II
+violation** — most real programs comment their declarations, and such a program
+will not compile — and the diagnostic points at a `/` rather than anything
+meaningful.
+
+It is outside FR-002.13's requirement IDs, and the implement procedure forbids
+folding in unrelated work, so `rt/timestamp_to_char.sqlc` has its comment moved
+outside the section with an explanation in place, and the fix is queued as its
+own task. Recorded here so the workaround is not mistaken for a preference.
+
+### Mutation results
+
+All six caught, after two corrections to the harness rather than the code.
+
+`accept an int length field` first reported as **surviving**. It was not: the
+mutation was run against `spec_assertions.py` while `varchar_len_int` is a
+negative owned by `run_negative.sh`. Re-run against the right harness, it dies.
+
+More seriously, `src/rt/diag.c` was **not in the backup list**, so the 1264
+mutation stayed in the tree; and `git checkout` then restored the file to its
+*committed* state, discarding T779 and T781 entirely. Both were caught only
+because the mutation result was checked against the file afterwards.
+
+That is the **seventh** occurrence of this class, and the sixth distinct cause:
+a `perl` substitution without `/g`, a guard matching its own comment, swallowed
+build output, a restore without `touch`, a backup filename that did not match
+the restore path, and now a file absent from the backup list restored from a
+commit that predated the work. The lesson has stopped being about any particular
+mechanism: **verify the mutation is present, verify the binary moved, and verify
+the restore restored the right thing** — the last of which no previous gate
+checked.
+
+### Not proved, as scoped
+
+Character sets — every fixture is single-byte, so `len` in bytes stays
+indistinguishable from `len` in characters and 002 Q4 is unmoved. `DECIMAL`,
+`SETSCALE` and C `fixed`. The four conversion warnings, so `WHENEVER SQLWARNING`
+remains structurally verified only, as since Gate 4. `CHAR_AS_ARRAY`, which
+SD-10 assumes away. `TYPE AS` and `INTERVAL`. Timestamps on the write path —
+FR-002.13 is exercised on retrieval only, and the `INSERT` traceability row
+still says so.
