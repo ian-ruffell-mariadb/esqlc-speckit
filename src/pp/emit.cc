@@ -408,6 +408,109 @@ std::string emit(const std::string &file, const ScanResult &sr,
             continue;
         }
 
+        // ---- PREPARE / DESCRIBE / EXECUTE (T1076-T1078) -----------------
+        // Each takes a statement NAME, as cursors do (Gate 3), for the same
+        // reason: the name is already the source language's identifier and a
+        // runtime table keyed by it needs no state in generated code.
+        if (k.keyword == "PREPARE" || k.keyword == "DESCRIBE" ||
+            k.keyword == "EXECUTE") {
+            const std::string sname = name_after_verb(k.body, k.keyword.c_str());
+            if (sname.empty()) {
+                d.error("ESQLC-1012", k.pos,
+                        k.keyword + " requires a statement name");
+                continue;
+            }
+            line_directive(k.pos.line);
+            o << "do {\n";
+            if (k.keyword == "PREPARE") {
+                // PREPARE s FROM :hostvar — the text is the program's buffer,
+                // carried verbatim (NFR-001.1). The runtime never rewrites it.
+                if (k.hostvars.size() != 1) {
+                    d.error("ESQLC-1012", k.pos,
+                            "PREPARE takes exactly one host variable holding the "
+                            "statement text");
+                    o << "} while (0);\n";
+                    continue;
+                }
+                const HostVar *hv = find(vars, k.hostvars[0].name);
+                if (!hv) {
+                    d.error("ESQLC-1014", k.pos,
+                            "host variable ':" + k.hostvars[0].name +
+                            "' is not declared in a declare section");
+                    o << "} while (0);\n";
+                    continue;
+                }
+                o << "  esqlc_prepare(\"" << sname << "\", " << hv->name
+                  << ", strlen(" << hv->name << "));\n";
+            } else {
+                // DESCRIBE s INTO :da / EXECUTE s USING DESCRIPTOR :da — the
+                // descriptor is the program's storage, so the generated call
+                // passes its address and its num_entries.
+                if (k.hostvars.size() != 1) {
+                    d.error("ESQLC-1012", k.pos,
+                            k.keyword + " takes exactly one SQLDA reference");
+                    o << "} while (0);\n";
+                    continue;
+                }
+                const std::string da = k.hostvars[0].name;
+                const char *fn = (k.keyword == "DESCRIBE")
+                                   ? "esqlc_describe" : "esqlc_execute";
+                o << "  " << fn << "(\"" << sname << "\", &" << da
+                  << ", " << da << ".num_entries, "
+                  << (structures_version >= 300 ? structures_version : 300);
+                if (k.keyword == "DESCRIBE") o << ", 0, 0";
+                o << ");\n";
+            }
+            close_stmt(k.keyword);
+            continue;
+        }
+
+        // ---- INCLUDE SQLDA (T1075) --------------------------------------
+        // §10 p.10-3: INCLUDE SQLDA ( sqlda-name [ , sqlvar-count ] … ). The
+        // examples pass more — (dummy_da, 1, dummy_namesbuf, 1) — so the list
+        // is name, count, and optionally a names buffer and its size.
+        if (k.keyword == "INCLUDE SQLDA") {
+            std::vector<std::string> args;
+            {
+                std::size_t lp = k.body.find('(');
+                std::size_t rp = k.body.find(')', lp == std::string::npos ? 0 : lp);
+                if (lp == std::string::npos || rp == std::string::npos) {
+                    d.error("ESQLC-1012", k.pos,
+                            "INCLUDE SQLDA requires a parenthesised parameter list: "
+                            "(sqlda-name [, sqlvar-count [, names-buffer, size]])");
+                    continue;
+                }
+                std::string inner = k.body.substr(lp + 1, rp - lp - 1);
+                std::string cur;
+                for (char c : inner) {
+                    if (c == ',') { args.push_back(cur); cur.clear(); }
+                    else if (!std::isspace((unsigned char)c)) cur += c;
+                }
+                if (!cur.empty()) args.push_back(cur);
+            }
+            if (args.empty() || args[0].empty()) {
+                d.error("ESQLC-1012", k.pos, "INCLUDE SQLDA requires a name");
+                continue;
+            }
+            unsigned count = 1;                      // p.10-3 makes it optional
+            if (args.size() > 1 && !args[1].empty())
+                count = (unsigned)std::strtoul(args[1].c_str(), nullptr, 10);
+            if (count == 0) {
+                d.error("ESQLC-1012", k.pos,
+                        "sqlvar-count must be at least 1; §10 p.10-30 allocates "
+                        "sizeof(SQLDA_TYPE) + ((n-1) * sizeof(SQLVAR_TYPE)), which "
+                        "needs one entry in the declaration");
+                continue;
+            }
+            std::string nb;  unsigned nbsize = 0;
+            if (args.size() > 3) { nb = args[2]; nbsize =
+                (unsigned)std::strtoul(args[3].c_str(), nullptr, 10); }
+            line_directive(k.pos.line);
+            o << sqlda_layout(args[0], count, nb, nbsize);
+            at_line_start = true;
+            continue;
+        }
+
         // ---- INVOKE (T979-T984) -----------------------------------------
         if (k.keyword == "INVOKE") {
             if (!schema_tried) {

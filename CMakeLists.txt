@@ -31,6 +31,7 @@ add_executable(esqlcpp
     src/pp/charset.cc
     src/pp/schema.cc
     src/pp/invoke.cc
+    src/pp/sqlda.cc
 )
 target_include_directories(esqlcpp PRIVATE src/pp)
 

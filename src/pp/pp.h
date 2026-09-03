@@ -117,6 +117,13 @@ std::string whenever_checks(const WheneverState &st);
 // SD-5: WHENEVER applies to DML, DCL and DDL, not to transaction control.
 bool whenever_applies(const std::string &keyword);
 
+// ---- SQLDA (Gate 10, T1071-T1074) --------------------------------------
+// Example 10-1's layout at the directive's count. NOT a flexible member: §10
+// p.10-30 allocates sizeof(SQLDA_TYPE) + ((n-1) * sizeof(SQLVAR_TYPE)), which
+// under-allocates by one entry if sizeof excludes the array.
+std::string sqlda_layout(const std::string &var, unsigned count,
+                         const std::string &names_var, unsigned names_size);
+
 // ---- schema cache (Gate 9, T960-T964) ----------------------------------
 // The preprocessor reads a committed cache and never opens a socket, which is
 // how FR-006.2e's "read access at preprocess time" and NFR-001.2's "Tier 1

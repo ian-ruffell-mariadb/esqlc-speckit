@@ -111,6 +111,24 @@ int  esqlc_sqlca_getinfolist(const void *sqlca, int error_index,
  * published layouts mean the runtime cannot infer which it was handed. */
 int  esqlc_sqlsa_register(void *sqlsa, size_t len, int version);
 
+/* Dynamic SQL (Gate 10). The descriptor is the PROGRAM's, not the runtime's —
+ * the first structure in this interface that the runtime does not own. The
+ * SQLCA and SQLSA are registered; an SQLDA is malloc'ed by the program at a
+ * size it computes per §10 p.10-30, and the runtime writes four of a sqlvar's
+ * eight fields and leaves the rest alone. */
+int  esqlc_prepare(const char *name, const char *sql, size_t sql_len);
+
+/* Fills data_type, data_len, precision and null_info, and NOTHING else.
+ * FR-007.8 reserves eye_catcher and var_ptr to the program, and §10 p.10-59 has
+ * it initialise ind_ptr too, "even when the program does not handle null
+ * values" — so all three survive byte-identical. `names_buf` may be NULL. */
+int  esqlc_describe(const char *name, void *sqlda, int num_entries, int version,
+                    char *names_buf, size_t names_len);
+
+/* Binds through the descriptor's var_ptr fields. Refuses a NULL var_ptr rather
+ * than allocating helpfully. */
+int  esqlc_execute(const char *name, void *sqlda, int num_entries, int version);
+
 long esqlc_sqlcode(void);
 int  esqlc_fs_detail(long *fs_code);
 

@@ -820,8 +820,10 @@ def assert_sqlda_layout(out: str) -> None:
     """T1041-T1044 — Example 10-1's order, every offset, and the count."""
     flat = " ".join(out.split())
     # T1041: four 16-bit fields, then four address-width ones, in this order.
-    order = ["short data_type;", "short data_len;", "short precision;",
-             "short null_info;"]
+    # int16_t rather than `short`: Gate 5's lesson — the manual's `short` is
+    # 16-bit and an explicit width is the only way that holds on every host.
+    order = ["int16_t data_type;", "int16_t data_len;", "int16_t precision;",
+             "int16_t null_info;"]
     pos = [flat.find(f) for f in order]
     check("FR-007.6a", all(p >= 0 for p in pos) and pos == sorted(pos),
           f"Example 10-1's field order must hold; found at {pos}")
@@ -835,8 +837,15 @@ def assert_sqlda_layout(out: str) -> None:
               f"offsetof({field}) must be asserted as {off}")
     check("NFR-007.3", "sizeof(struct SQLVAR_TYPE) == SQLDA_SQLVAR_LEN" in flat,
           "the sqlvar total must be asserted")
-    check("NFR-007.3", "SQLDA_TYPE, sqlvar) == SQLDA_HEADER_LEN" in flat,
-          "sqlvar must be asserted to follow the 4-byte header")
+    # DIV-058: DIV-040's widening raises SQLVAR_TYPE's alignment from 4 to 8,
+    # so sqlvar begins at 8 rather than at the published SQLDA_HEADER_LEN of 4.
+    # Measured: published sqlvar=4/align=4, widened sqlvar=8/align=8.
+    check("NFR-007.3", "SQLDA_TYPE, sqlvar) == 8" in flat,
+          "sqlvar's real offset must be asserted — 8 under DIV-040, not the "
+          "published header length of 4 (DIV-058)")
+    check("FR-007.6", "SQLDA_HEADER_LEN == 4" in flat,
+          "SQLDA_HEADER_LEN keeps its published value: Table 10-2 defines it as "
+          "the length of the header fields, which is still 4")
     # T1044: the count is the DIRECTIVE's. Not a flexible member, which would
     # make sizeof exclude the array and p.10-30's malloc under-allocate by one
     # entry; and not a fixed 16, which the SQLDA has no cap to justify.
