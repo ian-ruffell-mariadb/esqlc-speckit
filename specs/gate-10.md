@@ -45,10 +45,20 @@ sqlda_ptr = (sqldaptr) malloc(mem_reqd);
 sqlda_ptr->num_entries = num_entries;
 ```
 
-So `struct SQLDA_TYPE` declares **`sqlvar[1]`**, not a fixed array and not a C99
-flexible member, and the program over-allocates by `n - 1` entries. Generating
-anything else breaks that arithmetic silently — a fixed `sqlvar[16]` would make
-`mem_reqd` far too large and a flexible member would make `sizeof` too small.
+**Corrected at plan stage.** This document first said the structure *"declares
+`sqlvar[1]`, not a fixed array"*. The count is in fact a **directive
+parameter** — §10 p.10-3 gives `INCLUDE SQLDA ( sqlda-name [ , sqlvar-count ]
+… )` and Example 10-1 declares `} sqlvar[sqlvar-count];`, a placeholder the
+generator fills in. The program chooses.
+
+A count of `1` is idiomatic, and p.10-29 calls it *"the SQLDA template"*,
+precisely because p.10-30's arithmetic is then exact. A larger declared count
+still *over*-allocates safely under that formula, so it is not fragile — only
+exact at 1.
+
+What would break it is a **C99 flexible member** (`sqlvar[]`): `sizeof` would
+exclude the array and the formula would under-allocate by one entry, which is a
+heap overflow appearing at a customer's column count and not at a fixture's.
 
 **And that idiom is what makes `DIV-040` survivable.** `DIV-040` widens the
 `sqlvar` from the published 24 bytes to 40 so it can hold real pointers. A
@@ -201,8 +211,8 @@ Every open question in the five specs this slice touches.
 
 **In:** FR-007.1, FR-007.2 *(`EXECUTE` only)*, FR-007.3 *(`DESCRIBE` only)*,
 FR-007.6, FR-007.6a, FR-007.6b, FR-007.7, FR-007.7a, FR-007.8, FR-007.9,
-**FR-007.11a** *(the binary-numeric half of FR-007.11 — see the split note
-below)*, FR-007.13, FR-007.14, FR-007.15,
+**FR-007.11a** *(the binary-numeric packing — see the split note below)*,
+FR-007.13, FR-007.14, FR-007.15,
 FR-007.18 *(the numeric codes only)*, FR-007.22, FR-007.23, FR-007.26,
 NFR-007.3.
 

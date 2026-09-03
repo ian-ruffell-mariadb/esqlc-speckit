@@ -291,6 +291,19 @@ a supported fallback.
 
 ---
 
+**Migration, made explicit (Gate 10).** §10 p.10-30 allocates a descriptor as
+`sizeof(struct SQLDA_TYPE) + ((num_entries - 1) * sizeof(struct SQLVAR_TYPE))`.
+A program using that idiom is **safe at either width**, because it never names a
+byte count — Example 10-1's four `short`s and four `long`s are 24 bytes on
+NonStop and 40 once the address fields hold real pointers, and `sizeof` reports
+whichever applies.
+
+A program that hard-codes 24 **under-allocates by 40%**, and silently: the first
+entries are written correctly and only the last overflow, so the symptom appears
+at a customer's column count rather than at a fixture's. That is the difference
+between a program that works unchanged and one that corrupts its heap, and this
+entry previously left it implicit.
+
 ## DIV-041 — SQLCA layout is implementation-private
 
 **Status:** accepted · **Feature:** 005 · **Citation:** `[SQLPM/C §9 p.9-12]`, `[SQLPM/C §5 pp.5-11..5-12]`
@@ -681,3 +694,31 @@ under the default suffix, is refused rather than generated.
 is FR-006.5a and out of Gate 9's scope, so for now shortening is the only route.
 A program that relies on the collided name cannot have compiled on NonStop
 either, so there is nothing working to preserve.
+
+## DIV-057 — The names buffer's 8-byte table-name budget
+
+**Status:** proposed · **Feature:** 007 · **Citation:** `[SQLPM/C §10 p.10-7]`
+
+**NonStop:** `DESCRIBE` returns each column's name to the names buffer as a
+`VARCHAR` item, and the buffer is sized `(name-string-size + 11) × sqlvar-count`.
+§10 p.10-7 says the 11 bytes comprise *"the length (2 bytes), table name (8
+bytes), and period separator (1 byte)"* — an 8-character Guardian file name.
+
+**Here:** MariaDB identifiers run to 64 characters, so a name qualified with a
+real table name does not fit the budget the published formula reserves. The
+formula's constant cannot change: `SQLDA_NAMESBUF_OVHD_LEN` is 11 and programs
+size their buffers with it.
+
+**Rationale:** the three available choices are all visible to a program reading
+the buffer, so the choice has to be made and recorded rather than discovered.
+Truncating the table qualifier produces a name that looks valid and is wrong;
+omitting it produces an unqualified name, which is what a single-table query
+wanted anyway and is ambiguous for a join; refusing makes any table with a name
+over 8 characters undescribable, which is nearly all of them.
+
+**Detection:** describe a column from a table whose name exceeds 8 characters
+and read the names buffer.
+
+**Migration:** a program that parses `TABLE.COLUMN` out of the names buffer
+needs review. One that uses the buffer only for display is unaffected beyond the
+qualifier's presence or absence.

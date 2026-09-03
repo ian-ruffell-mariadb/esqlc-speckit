@@ -22,7 +22,7 @@ absent entry point must add it here in the same change.
 | Cursors | **read-only decided** | positioned ops — 004 Q3/Q7, `SQLRM` |
 | Structures — `SQLCA` | **decided** | — (Gate 4; layout private, `DIV-041`) |
 | Structures — `SQLSA` | **shape decided, population partial** | `records_accessed` source — `DIV-011` |
-| Descriptors (SQLDA) | not started | feature 007, `DIV-040` |
+| Descriptors (SQLDA) | **numeric describe decided** | character entries — 002 Q7 (`sqlh`); v1/v2 — feature 007 |
 
 ## Conventions
 
@@ -208,6 +208,52 @@ require the data to live in the program's own storage.
 > copy it using `SQLCA_LEN`, and share it `EXTERNAL` across modules — because
 > every saved copy would be an empty 430-byte husk. Writing into the program's
 > own storage keeps the layout private *and* the data where the manual says it is.
+
+## Dynamic SQL — added by Gate 10
+
+The second growth of the ABI, after Gate 3's cursors, and for the same reason: a
+prepared statement is long-lived state addressed by name across three
+statements.
+
+```c
+/* Compile a statement held in a host variable and associate it with a name.
+   The text is carried verbatim from the program's buffer (NFR-001.1); the
+   runtime parameterises `?` markers (FR-007.22) and never rewrites the text. */
+int esqlc_prepare(const char *name, const char *sql, size_t sql_len);
+
+/* Fill one sqlvar per output column. `sqlda` is the PROGRAM's storage,
+   allocated per §10 p.10-30, and `num_entries` its capacity — validated against
+   what PREPARE reported (ESQLC-7002) and never reallocated.
+
+   Writes data_type, data_len, precision and null_info, and NOTHING else.
+   FR-007.8 reserves eye_catcher and var_ptr to the program, and §10 p.10-59 has
+   it initialise ind_ptr too, "even when the program does not handle null
+   values" — so all three must survive byte-identical. `names_buf` receives
+   VARCHAR-shaped column names, or NULL to skip them. */
+int esqlc_describe(const char *name, void *sqlda, int num_entries, int version,
+                   char *names_buf, size_t names_len);
+
+/* Run a prepared statement, binding through the descriptor's var_ptr fields.
+   Refuses a NULL var_ptr (ESQLC-7003) rather than allocating helpfully. */
+int esqlc_execute(const char *name, void *sqlda, int num_entries, int version);
+```
+
+`version` is present on two of the three for the reason `esqlc_sqlsa_register`
+needed it: more than one layout is published, so the runtime cannot infer which
+it was handed. Only 300+ is implemented, and the parameter exists so v1 and v2
+do not force a signature change later.
+
+> **The descriptor is the program's, not the runtime's.** This is the first
+> structure in the contract that the runtime does not own. The `SQLCA` and
+> `SQLSA` are registered — the program declares them at a fixed size and hands
+> them over. An `SQLDA` is `malloc`ed at a size the program computes, from a
+> count the runtime told it, and the runtime writes four of a `sqlvar`'s eight
+> fields. §10's whole model is built that way and registration would take
+> ownership the manual gives away.
+
+`esqlc_stmt_exec` is untouched: it takes a descriptor array the preprocessor
+built from source it could read, plus Gate 6's table landmark. A dynamic
+statement has neither.
 
 ## Statement execution — outline
 
