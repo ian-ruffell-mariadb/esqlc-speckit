@@ -47,20 +47,6 @@ const HostVar *find(const std::vector<HostVar> &v, const std::string &name) {
     return nullptr;
 }
 
-// Replace each recorded host-variable span with '?'. This is splicing at
-// offsets the lexer already found — no SQL parsing (NFR-001.1, FR-003.10).
-std::string placeholderise(const Construct &k) {
-    std::string out;
-    std::size_t prev = 0;
-    for (const auto &hv : k.hostvars) {
-        out += k.body.substr(prev, hv.begin - prev);
-        out += "?";
-        prev = hv.end;
-    }
-    out += k.body.substr(prev);
-    return out;
-}
-
 // A reference, classified. `ind` indexes the reference that serves as this
 // one's indicator, or -1.
 struct Classified {
@@ -189,8 +175,9 @@ std::string word_after(const std::string &b, std::size_t from) {
     return w;
 }
 
-// Like placeholderise, but an associated indicator reference is removed rather
-// than turned into a placeholder: `SET weight = :w :ind` sends one parameter,
+// Replace each recorded host-variable span with '?', except that an associated
+// indicator reference is REMOVED rather than turned into a placeholder:
+// `SET weight = :w :ind` sends one parameter,
 // not two. The indicator is a binding instruction, never SQL (FR-002.15).
 std::string placeholderise_inputs(
         const Construct &k,
