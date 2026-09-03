@@ -327,5 +327,15 @@ run_case timestamp_to_char "$RT/timestamp_to_char.sqlc" 0 \
 run_case int_overflow_8300 "$RT/int_overflow_8300.sqlc" 0 \
   && ok "int_overflow_8300 — 1264 maps to -8300, no fabricated 1031 (DIV-054)"
 
+# --- Gate 8 (T847-T852) character sets ----------------------------------
+mdb < "$FIX/seed.sql" >/dev/null
+
+# THE fixture. Fails until character_set_client is binary: the runtime
+# inherits latin1 and the server transcodes parameter bytes to the column's
+# set. FR-002.30's byte-verbatim guarantee has only ever been tested against
+# ASCII, where that transcoding is the identity. DIV-055.
+run_case charset_high_bytes "$RT/charset_high_bytes.sqlc" 0 \
+  && ok "charset_high_bytes — a byte above 0x7F survives (FR-002.30, DIV-055)"
+
 echo "tier2: $pass passed, $fail failed"
 exit $(( fail > 0 ))

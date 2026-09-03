@@ -152,10 +152,23 @@ declaration the preprocessor must notice.
 | `ESQLC-2010` | Character value right-truncated on retrieval | warn (runtime, via `sqlcode`) | `[§2 p.2-5]` |
 | `ESQLC-2011` | Fixed-point precision loss to floating point | warn (runtime) | `[§2 p.2-11]` |
 | `ESQLC-2012` | Fixed-point fraction discarded to integer | warn (runtime) | `[§2 p.2-11]` |
+| `ESQLC-2013` | Character-set keyword recognised, but MariaDB has no counterpart (`ISO88593`, `4`, `5`, `6`) | error | `[§2 p.2-24]`, `[DIV-055]` |
+| `ESQLC-2014` | `KANJI` requested — the keyword is recognised and the manual specifies no encoding | error | `[§2 p.2-3]`, `[DIV-055]` |
+| `ESQLC-2015` | A retrieved column's character set disagrees with the host variable's declared set | error | `[§10 p.10-11]` |
 
 `ESQLC-2010..2012` are runtime warnings surfaced through `sqlcode`, not
 preprocessor diagnostics. Their `sqlcode` values must match SQL/MP's — an
 unresolved question below.
+
+
+`ESQLC-2013` and `ESQLC-2014` are deliberately separate codes. Both refuse a
+keyword the manual defines, for opposite reasons: 2013 means MariaDB has no
+equivalent character set, and 2014 means the *manual* names a script without
+naming an encoding — `KANJI` could be `sjis`, `cp932`, `ujis` or `eucjpms`,
+which differ in maximum byte length and in repertoire. One sends a reader to
+MariaDB's charset list; the other to `SQLRM` or a NonStop system. Collapsing
+them would send either reader to the wrong place, so a Gate 8 mutation checks
+that the two stay distinct.
 
 ## 6. Open questions
 

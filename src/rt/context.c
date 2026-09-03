@@ -128,6 +128,36 @@ int esqlc_rt_connect(void) {
         mysql_options(s->conn, MYSQL_READ_DEFAULT_FILE, s->optfile);
     mysql_options(s->conn, MYSQL_READ_DEFAULT_GROUP, "esqlc");
 
+    /* T874 / DIV-055 — the client character set is `binary`, and this is the
+     * load-bearing line of Gate 8.
+     *
+     * FR-002.30 requires a host variable's bytes to reach the column verbatim.
+     * MYSQL_BIND has no character-set field, so a per-parameter charset cannot
+     * be expressed at all: parameter bytes are interpreted as
+     * character_set_client and transcoded to the column's set by the server.
+     * The only way to bind verbatim is to stop the transcoding happening.
+     *
+     * Without this the runtime inherited `latin1`, and the exposure was varied
+     * rather than uniform — measured on the server:
+     *
+     *     latin1 -> latin2   E1E9      ->  E1E9        (unchanged, by luck)
+     *     latin1 -> latin2   B0B1      ->  B03F        (silent substitution)
+     *     latin1 -> euckr    B0A1      ->  A1C6A2AE    (silently re-encoded)
+     *
+     * Some bytes survive, some become the `?` substitution, and a multibyte
+     * target re-encodes entirely and changes the length. Under the strict mode
+     * Gate 7 added, an unmappable byte errors loudly (1366) — but a byte that
+     * maps to something *different* does not, and that is the silent case.
+     *
+     * Every fixture through Gate 7 is ASCII, where latin1 transcoding is the
+     * identity, so FR-002.30 held by accident and was never tested above 0x7F.
+     * The declared CHARACTER SET now describes what the bytes ARE, which is
+     * what §2 p.2-24 says it means, rather than directing a conversion. */
+    {
+        static const char binary_cs[] = "binary";
+        mysql_options(s->conn, MYSQL_SET_CHARSET_NAME, binary_cs);
+    }
+
     /* DIV-053. sqlcode 100 means "No rows were found on a search condition"
      * (§4 p.4-13), so it is about rows MATCHED. MariaDB's affected_rows reports
      * rows CHANGED for an UPDATE by default, which would make a found row
