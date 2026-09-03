@@ -4,6 +4,9 @@ set -uo pipefail
 PP="${1:?usage: run_golden.sh <esqlcpp>}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIR="$ROOT/tests/conformance/gate-1"
+# Gate 9: INVOKE reads a committed cache. Passed unconditionally — the
+# fixture exists in the tree, and a fixture without an INVOKE ignores it.
+SCHEMA="$DIR/schema.cache"
 fail=0; ran=0
 # Normalise whitespace, and collapse any embedded source path to its basename
 # so the comparison does not depend on the cwd the tool was invoked from.
@@ -17,7 +20,7 @@ for src in "$DIR"/*.sqlc; do
   [ -e "$exp" ] || continue
   ran=$((ran+1))
   act="${src%.sqlc}.actual.c"
-  if ! "$PP" "$src" -o "$act" 2>"${src%.sqlc}.actual.diag"; then
+  if ! "$PP" "$src" --schema "$SCHEMA" -o "$act" 2>"${src%.sqlc}.actual.diag"; then
     echo "FAIL $(basename "$src"): preprocessing failed"
     cat "${src%.sqlc}.actual.diag"; fail=$((fail+1)); continue
   fi

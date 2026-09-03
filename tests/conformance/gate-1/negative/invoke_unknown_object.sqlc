@@ -1,0 +1,5 @@
+/* an object absent from the cache */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE no_such_table AS x;
+int main(void) { return 0; }

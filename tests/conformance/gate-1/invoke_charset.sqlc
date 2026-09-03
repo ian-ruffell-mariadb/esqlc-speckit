@@ -1,0 +1,13 @@
+/* T914 — FR-006.2b: CHARACTER SET emitted inline, BEFORE the identifier, as
+   §2 p.2-22 writes it.
+
+   This is where generation and parsing have to meet: the clause INVOKE writes
+   must be one Gate 8's parser reads back, and the descriptor must carry the
+   set. Gate 8 built the reading half; until then neither end existed. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE charsets AS cs_rec;
+int main(void) {
+  EXEC SQL INSERT INTO charsets (k, c_l2) VALUES (:cs_rec.k, :cs_rec.c_l2);
+  return 0;
+}

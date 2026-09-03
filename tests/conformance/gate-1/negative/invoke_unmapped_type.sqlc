@@ -1,0 +1,5 @@
+/* a column type 002 does not map */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE badtype AS bt;
+int main(void) { return 0; }

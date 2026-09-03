@@ -1,0 +1,5 @@
+/* a 30-character nullable column: SQL/MP truncates _I so the indicator name equals the field name. DIV-056 diagnoses rather than reproduces */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE longname AS ln;
+int main(void) { return 0; }

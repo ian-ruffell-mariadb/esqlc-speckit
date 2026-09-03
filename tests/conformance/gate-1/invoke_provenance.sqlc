@@ -1,0 +1,9 @@
+/* T917 — FR-006.5d. §2 p.2-22 prints the shape:
+     /* Record Definition for table \NEWYORK.$DISK1.SQL.TYPESC2 *­/
+     /* Definition current at 13:52:19 - 8/27/96  *­/
+   The object and the cache's capture timestamp. It is the only provenance a
+   program carries until 001's listing output exists (FR-006.7, out of slice). */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE parts AS parts_rec;
+int main(void) { return 0; }

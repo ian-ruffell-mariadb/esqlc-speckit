@@ -1,0 +1,12 @@
+/* T913 — the type mapping, through 002's table rather than a second one.
+   parts is SMALLINT NOT NULL, CHAR(18) NOT NULL, SMALLINT NULL — so this
+   covers an integer, a character array with its terminator byte (FR-006.3,
+   SD-10) and a nullable column in one structure. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE parts AS parts_rec;
+int main(void) {
+  EXEC SQL INSERT INTO parts (part_num, part_desc)
+           VALUES (:parts_rec.part_num, :parts_rec.part_desc);
+  return 0;
+}
