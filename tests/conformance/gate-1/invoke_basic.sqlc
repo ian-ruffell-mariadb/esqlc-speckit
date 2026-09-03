@@ -1,0 +1,7 @@
+/* T912 — the simplest INVOKE. §2 p.2-21: `EXEC SQL INVOKE <obj> AS <tag>;`
+   FR-006.2a: the generated tag is the object name with `_type` appended, so
+   this must produce `struct parts_type`. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE parts AS parts_rec;
+int main(void) { return 0; }

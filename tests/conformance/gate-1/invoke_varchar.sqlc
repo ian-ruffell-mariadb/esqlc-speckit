@@ -1,0 +1,11 @@
+/* T915 — FR-006.4: a VARCHAR column generates the nested group. The shape
+   Gate 7 taught the preprocessor to READ, now written by it, with Gate 8's
+   CHARACTER SET clause inside — and it must carry Gate 7's three layout
+   assertions, because it goes through the same emitter. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE charsets AS cs_rec;
+int main(void) {
+  EXEC SQL INSERT INTO charsets (k, v_kr) VALUES (:cs_rec.k, :cs_rec.v_kr);
+  return 0;
+}

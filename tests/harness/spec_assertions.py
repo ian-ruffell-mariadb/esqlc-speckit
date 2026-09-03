@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FIX = ROOT / "tests" / "conformance" / "gate-1"
 
 DESC_RE = re.compile(
-    r"\{\s*&(?P<name>\w+),\s*(?P<ind>&?\w+),\s*(?P<type>ESQLC_T_\w+),\s*"
+    r"\{\s*&(?P<name>[\w.]+),\s*(?P<ind>&?[\w.]+),\s*(?P<type>ESQLC_T_\w+),\s*"
     r"(?P<width>\d+)u,\s*(?P<capacity>\d+)u,\s*(?P<scale>-?\d+),\s*"
     r"(?P<signed>\d+),\s*(?P<dir>ESQLC_DIR_\w+),\s*(?P<charset>\d+)\s*\}"
 )
@@ -41,8 +41,14 @@ def check(req: str, ok: bool, what: str) -> None:
         failures.append(f"{req}: {what}")
 
 
+SCHEMA = FIX / "schema.cache"
+
+
 def emit(pp: str, src: Path) -> str:
-    r = subprocess.run([pp, str(src)], capture_output=True, text=True)
+    # Gate 9: INVOKE reads a committed cache. Passed unconditionally — a fixture
+    # without an INVOKE ignores it.
+    r = subprocess.run([pp, str(src), "--schema", str(SCHEMA)],
+                       capture_output=True, text=True)
     if r.returncode != 0:
         failures.append(f"preprocessing {src.name} failed: {r.stderr.strip()}")
         return ""
@@ -654,6 +660,144 @@ def assert_charset_keywords(out: str) -> None:
     compiles(out, "charset_keywords")
 
 
+
+def assert_invoke_basic(out: str) -> None:
+    """T930, T931 — the tag, the fields, and that it compiles."""
+    check("FR-006.2a", "struct parts_type" in out,
+          "FR-006.2a: the tag is the object name with _type appended")
+    check("FR-006.1", "} parts_rec;" in " ".join(out.split()),
+          "the AS name is the variable declared by the generated struct")
+    for f in ("part_num", "part_desc", "weight"):
+        check("FR-006.2", f in out, f"field {f} must be generated, lowercased")
+    # T931 — the blunt one, and the most valuable: a generator whose output
+    # does not compile is the whole failure mode.
+    compiles(out, "invoke_basic")
+
+
+def assert_invoke_types(out: str) -> None:
+    """T932 — 002's table, not a second one."""
+    flat = " ".join(out.split())
+    # CHAR(18) -> char[19]: the terminator byte of FR-006.3 / SD-10.
+    check("FR-006.3", "part_desc[19]" in flat,
+          "CHAR(18) generates char[19] under CHAR_AS_STRING (FR-006.3, SD-10)")
+    check("FR-002.9", "short" in flat and "part_num" in flat,
+          "SMALLINT generates short")
+    d = {x["name"]: x for x in descriptors(out)}
+    # The generated declarations are RE-PARSED, so the descriptors prove the
+    # generator and the parser agree — one path to be right, not two.
+    check("FR-002.3", "parts_rec.part_desc" in d
+          and int(d["parts_rec.part_desc"]["capacity"]) == 19
+          and int(d["parts_rec.part_desc"]["width"]) == 18,
+          f"the re-parsed descriptor must be width 18 / capacity 19; got "
+          f"{d.get('parts_rec.part_desc')}")
+    check("FR-002.9", "parts_rec.part_num" in d
+          and int(d["parts_rec.part_num"]["width"]) == 2,
+          "the re-parsed integer descriptor must be width 2")
+    compiles(out, "invoke_types")
+
+
+def assert_invoke_charset(out: str) -> None:
+    """T933, T934 — generation and parsing must meet."""
+    # FR-006.2b says the clause is emitted inline before the identifier, and
+    # §2 p.2-22 shows exactly that. It cannot survive into emitted C: Gate 8
+    # established the clause is a NonStop C compiler extension (§1 p.1-2) that
+    # gcc and clang lack, so it is consumed on the way out.
+    #
+    # So the requirement is observable through the DESCRIPTOR, which is where
+    # the association is actually carried — and that is the stronger check
+    # anyway, because it proves the generator wrote a clause the parser read.
+    d = {x["name"]: x for x in descriptors(out)}
+    check("FR-002.8", "cs_rec.c_l2" in d and int(d["cs_rec.c_l2"]["charset"]) == 2,
+          f"Gate 8's parser must read the emitted clause back as ISO88592 (id 2); "
+          f"got {d.get('cs_rec.c_l2', {}).get('charset')}")
+    compiles(out, "invoke_charset")
+
+
+def assert_invoke_varchar(out: str) -> None:
+    """T935 — the nested group, with Gate 7's assertions."""
+    flat = " ".join(out.split())
+    check("FR-006.4", "short len;" in flat and "val[11]" in flat,
+          "a VARCHAR column generates the nested short len / char val group")
+    dv = {x["name"]: x for x in descriptors(out)}
+    check("FR-006.4", "cs_rec.v_kr" in dv
+          and dv["cs_rec.v_kr"]["type"] == "ESQLC_T_CHAR_VAR",
+          f"the generated group must re-parse as a VARCHAR descriptor; got "
+          f"{dv.get('cs_rec.v_kr', {}).get('type')}")
+    check("FR-006.4", "cs_rec.v_kr" in dv
+          and int(dv["cs_rec.v_kr"]["charset"]) == 51,
+          "and carry KSC5601 (id 51) from the cached definition")
+    check("FR-002.6", "} v_kr;" in flat,
+          "the group's name derives from the column name")
+    # It goes through the same emitter, so it must carry Gate 7's three.
+    check("NFR-002.2", "sizeof(cs_rec.v_kr.len) == 2" in flat,
+          "a generated VARCHAR group must carry Gate 7's len assertion")
+    check("NFR-002.2", "val) == 2" in flat,
+          "and the val offset assertion")
+    # T982: the structure itself gets no sizeof assertion — its total is not API.
+    check("NFR-002.2", "sizeof(cs_rec) ==" not in flat,
+          "the generated structure's total is NOT API and must not be asserted; "
+          "nothing copies it by length or shares it EXTERNAL")
+    compiles(out, "invoke_varchar")
+
+
+def assert_invoke_indicators(out: str) -> None:
+    """T936, T937, T938 — the two details p.2-22 settles."""
+    flat = " ".join(out.split())
+    # T936 — one for the nullable column, none for the others.
+    check("FR-006.5", "weight_i" in flat,
+          "the nullable column gets an indicator")
+    for f in ("part_num_i", "part_desc_i"):
+        check("FR-006.5", f not in flat,
+              f"{f} must NOT exist — an indicator per column is not an "
+              f"indicator per nullable column")
+    # T938 — `_i` lowercase. FR-006.5b appends _I and FR-006.2 lowercases;
+    # asserting _I would pass a wrong implementation.
+    check("FR-006.5b", "weight_I" not in out,
+          "the generated identifier is _i, lowercased with the rest (p.2-22)")
+    # T937 — the indicator PRECEDES its field (FR-006.5, and p.2-22's order).
+    i_ind, i_fld = flat.find("weight_i;"), flat.find("weight;")
+    check("FR-006.5", i_ind != -1 and i_fld != -1 and i_ind < i_fld,
+          "the indicator must PRECEDE its host variable — a structure with them "
+          "after would compile and be wrong at every offset")
+    compiles(out, "invoke_indicators")
+
+
+def assert_invoke_provenance(out: str) -> None:
+    """T939 — the only provenance a program carries until 001's listing."""
+    check("FR-006.5d", "Record Definition for table" in out,
+          "the generated comment names the invoked object (p.2-22's shape)")
+    check("FR-006.5d", "parts" in out and "Definition current at" in out,
+          "and the timestamp of the definition used")
+    check("FR-006.5d", "2026-09-03T11:20:14Z" in out,
+          "the timestamp is the cache's !captured value — the only staleness "
+          "signal SD-16 provides")
+
+
+def assert_invoke_placeholders(out: str) -> None:
+    """T940 — a generated field is a host variable like any other."""
+    for sql, _ in EXEC_RE.findall(out):
+        check("FR-003.10", ":" not in sql,
+              f"no generated-field reference may survive into the statement: {sql!r}")
+    check("FR-003.10", len(descriptors(out)) == 2,
+          f"two generated fields referenced, two descriptors; got "
+          f"{len(descriptors(out))}")
+
+
+def assert_invoke_line_fidelity(out: str, src_name: str) -> None:
+    """T951 — #line must not drift into generated territory.
+
+    Generated multi-line output is the largest opportunity yet for the defect
+    Gates 1 and 2 both hit. Every #line for this file must name a line that
+    actually exists in it.
+    """
+    src = (FIX / src_name).read_text().splitlines()
+    nums = [int(n) for n in re.findall(
+        rf'#line\s+(\d+)\s+"[^"]*{re.escape(src_name)}"', out)]
+    check("NFR-001.1", nums and max(nums) <= len(src),
+          f"a #line names line {max(nums) if nums else '?'} of a "
+          f"{len(src)}-line file — it drifted into generated text")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: spec_assertions.py <esqlcpp>", file=sys.stderr)
@@ -729,6 +873,28 @@ def main() -> int:
     out = emit(pp, FIX / "charset_keywords.sqlc")
     if out:
         assert_charset_keywords(out)
+    out = emit(pp, FIX / "invoke_basic.sqlc")
+    if out:
+        assert_invoke_basic(out)
+        assert_invoke_line_fidelity(out, "invoke_basic.sqlc")
+    out = emit(pp, FIX / "invoke_types.sqlc")
+    if out:
+        assert_invoke_types(out)
+    out = emit(pp, FIX / "invoke_charset.sqlc")
+    if out:
+        assert_invoke_charset(out)
+    out = emit(pp, FIX / "invoke_varchar.sqlc")
+    if out:
+        assert_invoke_varchar(out)
+    out = emit(pp, FIX / "invoke_indicators.sqlc")
+    if out:
+        assert_invoke_indicators(out)
+    out = emit(pp, FIX / "invoke_provenance.sqlc")
+    if out:
+        assert_invoke_provenance(out)
+    out = emit(pp, FIX / "invoke_placeholders.sqlc")
+    if out:
+        assert_invoke_placeholders(out)
 
     for f in failures:
         print(f"FAIL {f}")

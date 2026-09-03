@@ -1,0 +1,11 @@
+/* T916 — parts has one NOT NULL integer, one NOT NULL character and one
+   NULLABLE integer, so a per-column indicator is distinguishable from a
+   per-nullable one. FR-006.5.
+
+   Two details from §2 p.2-22 that a looser fixture would miss: the indicator
+   PRECEDES its field, and it is spelled `_i` lowercase — FR-006.5b appends
+   `_I` to the catalogue name and FR-006.2 lowercases the identifier. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE parts AS parts_rec;
+int main(void) { return 0; }

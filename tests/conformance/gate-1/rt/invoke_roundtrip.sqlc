@@ -1,0 +1,30 @@
+/* T919 — the generated structure is USABLE, not just text that compiles.
+   FR-006.8: individual generated fields are referenceable as :tag.field. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INVOKE parts AS parts_rec;
+EXEC SQL BEGIN DECLARE SECTION;
+  short probe_num; char probe_desc[19];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  parts_rec.part_num = 8001;
+  memcpy(parts_rec.part_desc, "GENERATED STRUCT  ", 18);
+  EXEC SQL INSERT INTO parts (part_num, part_desc)
+           VALUES (:parts_rec.part_num, :parts_rec.part_desc);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+
+  probe_num = 8001;
+  EXEC SQL SELECT part_desc INTO :probe_desc FROM parts WHERE part_num = :probe_num;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (memcmp(probe_desc, parts_rec.part_desc, 18) != 0) {
+    printf("FAIL: bytes differ; generated descriptor is wrong\n");
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("invoke_roundtrip ok\n");
+  return 0;
+}

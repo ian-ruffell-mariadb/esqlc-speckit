@@ -1,0 +1,5 @@
+/* a column named 'int' — a C keyword, so the generated structure would not compile and the error would point at generated text */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE badident AS bi;
+int main(void) { return 0; }

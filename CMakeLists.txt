@@ -29,6 +29,8 @@ add_executable(esqlcpp
     src/pp/whenever.cc
     src/pp/sqlsa.cc
     src/pp/charset.cc
+    src/pp/schema.cc
+    src/pp/invoke.cc
 )
 target_include_directories(esqlcpp PRIVATE src/pp)
 
@@ -113,6 +115,13 @@ if(TARGET esqlc)
                      $<TARGET_FILE:esqlcpp> $<TARGET_FILE:esqlc>)
     set_tests_properties(sqlsa_layout_sync PROPERTIES SKIP_RETURN_CODE 77)
 endif()
+
+# Gate 9: the two schema-source failures cannot be run_negative fixtures,
+# because that harness passes --schema unconditionally and these are about the
+# option being absent or naming an unreadable file (T922, T927).
+add_test(NAME invoke_cache_errors
+         COMMAND ${CMAKE_SOURCE_DIR}/tests/harness/invoke_cache_errors.sh
+                 $<TARGET_FILE:esqlcpp>)
 
 # Principle I makes the manual the contract, so a citation pointing at the
 # wrong page is worse than none — it looks like evidence. Skips when manual/ is

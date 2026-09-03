@@ -1,0 +1,10 @@
+/* T918 — a generated field is a host variable like any other: it becomes a
+   placeholder and its value never reaches the statement text. */
+#pragma SQL
+long sqlcode;
+EXEC SQL INVOKE parts AS parts_rec;
+int main(void) {
+  EXEC SQL SELECT part_desc INTO :parts_rec.part_desc
+           FROM parts WHERE part_num = :parts_rec.part_num;
+  return 0;
+}

@@ -44,10 +44,12 @@ ok()   { echo "ok   $1"; pass=$((pass+1)); }
 bad()  { echo "FAIL $1: $2"; fail=$((fail+1)); }
 
 # Build a .sqlc fixture (preprocess, compile, link) or a plain .c fixture.
+SCHEMA="$FIX/schema.cache"      # Gate 9: INVOKE reads a committed cache
+
 build() {  # build <src> <out>
   local src="$1" out="$2" cfile="$TMP/$(basename "${1%.*}").c"
   if [ "${src##*.}" = "sqlc" ]; then
-    "$PP" "$src" -o "$cfile" || return 1
+    "$PP" "$src" --schema "$SCHEMA" -o "$cfile" || return 1
   else
     cfile="$src"
   fi
@@ -355,6 +357,14 @@ run_case charset_null "$RT/charset_null.sqlc" 0 \
 
 run_case charset_family "$RT/charset_family.sqlc" 0 \
   && ok "charset_family — bytes verbatim; a set mismatch is NOT refused (DIV-055)"
+
+# --- Gate 9 (T952-T953) INVOKE ------------------------------------------
+# The generated structure must be USABLE, not just text that compiles.
+run_case invoke_roundtrip "$RT/invoke_roundtrip.sqlc" 0 \
+  && ok "invoke_roundtrip — :tag.field round-trips (FR-006.8)"
+
+run_case invoke_null "$RT/invoke_null.sqlc" 0 \
+  && ok "invoke_null — a null through the generated indicator (FR-002.16)"
 
 echo "tier2: $pass passed, $fail failed"
 exit $(( fail > 0 ))

@@ -1,0 +1,8 @@
+/* FR-006.1 / ESQLC-6006: INVOKE is a declaration, so it is refused in
+   executable position — the dispatch table's PosClass::Decl. */
+#pragma SQL
+long sqlcode;
+int main(void) {
+  EXEC SQL INVOKE parts AS parts_rec;
+  return 0;
+}

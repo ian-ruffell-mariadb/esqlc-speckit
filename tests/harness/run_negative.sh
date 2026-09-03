@@ -5,12 +5,15 @@ PP="${1:?usage: run_negative.sh <esqlcpp>}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DIR="$ROOT/tests/conformance/gate-1/negative"
 fail=0; ran=0
+# Gate 9: see run_golden.sh.
+SCHEMA="$ROOT/tests/conformance/gate-1/schema.cache"
+
 for src in "$DIR"/*.sqlc; do
   [ -e "$src" ] || continue
   exp="${src%.sqlc}.expected.diag"
   [ -e "$exp" ] || continue
   ran=$((ran+1))
-  out="$("$PP" "$src" -o /dev/null 2>&1 >/dev/null)"
+  out="$("$PP" "$src" --schema "$SCHEMA" -o /dev/null 2>&1 >/dev/null)"
   # expected file holds lines of the form  CODE:line:col
   ok=1
   while IFS= read -r want; do

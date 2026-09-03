@@ -1,0 +1,32 @@
+/* T920 — a null through the GENERATED indicator. `weight` is the nullable
+   column, so INVOKE generates `weight_i` preceding it. FR-002.16. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL INVOKE parts AS parts_rec;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  parts_rec.part_num = 8002;
+  memcpy(parts_rec.part_desc, "NULL VIA INVOKE   ", 18);
+  parts_rec.weight   = 999;            /* must NOT be stored */
+  parts_rec.weight_i = -1;             /* the generated indicator */
+  EXEC SQL INSERT INTO parts (part_num, part_desc, weight)
+           VALUES (:parts_rec.part_num, :parts_rec.part_desc,
+                   :parts_rec.weight :parts_rec.weight_i);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+
+  parts_rec.weight_i = 0;
+  EXEC SQL SELECT weight INTO :parts_rec.weight :parts_rec.weight_i
+           FROM parts WHERE part_num = :parts_rec.part_num;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (parts_rec.weight_i != -1) {
+    printf("FAIL: indicator %d, want -1; stored %d\n",
+           (int)parts_rec.weight_i, (int)parts_rec.weight);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("invoke_null ok\n");
+  return 0;
+}

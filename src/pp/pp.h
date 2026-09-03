@@ -117,6 +117,42 @@ std::string whenever_checks(const WheneverState &st);
 // SD-5: WHENEVER applies to DML, DCL and DDL, not to transaction control.
 bool whenever_applies(const std::string &keyword);
 
+// ---- schema cache (Gate 9, T960-T964) ----------------------------------
+// The preprocessor reads a committed cache and never opens a socket, which is
+// how FR-006.2e's "read access at preprocess time" and NFR-001.2's "Tier 1
+// runs with no MariaDB" coexist (NFR-006.2, SD-15).
+struct SchemaColumn {
+    std::string name;         // as catalogued
+    std::string sqltype;      // SMALLINT, CHAR, VARCHAR, ...
+    unsigned    length = 0;   // column length, for character types
+    bool        nullable = false;
+    std::string charset;      // SQL/MP keyword, or UNKNOWN
+};
+
+struct Schema {
+    // SD-16: the only staleness signal there is. The preprocessor cannot detect
+    // a stale cache — it has no connection — so it stamps this into generated
+    // output and leaves detection to the build system.
+    std::string captured;
+    std::vector<std::pair<std::string, std::vector<SchemaColumn>>> tables;
+
+    const std::vector<SchemaColumn> *find(const std::string &table) const;
+};
+
+// Read the cache. `err` distinguishes the two failures the diagnostics keep
+// separate: SchemaErr::None, Absent (no --schema at all, ESQLC-6002) and
+// Unreadable (named but unusable, ESQLC-6008).
+enum class SchemaErr { None, Absent, Unreadable };
+SchemaErr schema_read(const std::string &path, Schema &out);
+
+// ---- INVOKE (Gate 9, T966-T977) ----------------------------------------
+// Generates the declaration text of §2 p.2-22. The text is then RE-PARSED by
+// parse_declare_section rather than trusted, so there is one path to be right
+// and Gates 7 and 8 are the test of what this emits.
+std::string invoke_generate(const std::string &object, const std::string &tag,
+                            const std::vector<SchemaColumn> &cols,
+                            const std::string &captured, Pos at, Diag &d);
+
 // ---- character sets (Gate 8, T860) -------------------------------------
 // Mapped: MariaDB has it. Unmapped: the keyword is real, MariaDB has no
 // counterpart (the gap is MariaDB's). Unspecified: the keyword is real and the
@@ -154,6 +190,7 @@ const Handler *lookup(const std::string &keyword);
 
 // ---- emission (T072-T074) ---------------------------------------------
 std::string emit(const std::string &file, const ScanResult &sr,
-                 std::vector<HostVar> &vars, Diag &d);
+                 std::vector<HostVar> &vars, Diag &d,
+                 const std::string &schema_path);
 
 }  // namespace pp

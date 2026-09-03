@@ -10,7 +10,7 @@ topics — a slice proves the spine, never the breadth. Marking those `tested`
 would overstate coverage, and leaving them `spec` understates it. Where a row is
 `partial`, the gap is named.
 
-Coverage as of Gate 8 (2026-09-03): Gate 1 insert · Gate 2 retrieval ·
+Coverage as of Gate 9 (2026-09-03): Gate 1 insert · Gate 2 retrieval ·
 Gate 3 read-only cursors · Gate 4 WHENEVER and the SQLCA · Gate 5 the SQLSA ·
 Gate 6 searched UPDATE and DELETE.
 
@@ -40,8 +40,8 @@ Gate 6 searched UPDATE and DELETE.
 | Fixed-point types, `SETSCALE`, C `fixed` | 002 | | spec |
 | Date-time and INTERVAL host variables | 002 | G7: date-time column into char; no TYPE AS, no INTERVAL | partial |
 | Indicator variables for null values | 002 | G2 | tested |
-| `INVOKE` directive and generated structures | 006 | | spec |
-| `INVOKE` with indicator variables | 006 | | spec |
+| `INVOKE` directive and generated structures | 006 | G9: base tables from a committed cache; no NCHAR, no MAP DEFINE, no PREFIX/SUFFIX | partial |
+| `INVOKE` with indicator variables | 006 | G9: one per nullable column, preceding it, spelled _i | tested |
 | `INVOKE` with SQLCI | 008 | | spec |
 | Character set association with host variables | 002 | G8: ISO8859-1/2/7/8/9 and KSC5601; KANJI and 8859-3/4/5/6 refused (DIV-055) | partial |
 

@@ -635,7 +635,13 @@ before or after this slice.
 
 Consequence: reading a column into a host variable declared for a different
 character set delivers correct bytes that the program will misinterpret, and
-nothing refuses it. That is the one silent failure this slice does not close.
+nothing refuses it.
+
+**Narrowed by Gate 9.** `INVOKE` emits the `CHARACTER SET` clause from the
+cached column definition (FR-006.2b), so a *generated* declaration cannot
+disagree with its column — there is nothing to check because there is nothing to
+disagree. The path a program is supposed to use is no longer exposed. A
+hand-written declaration still is, and that is what remains of this failure.
 Recovering the column's set needs a per-statement `information_schema` query;
 the check properly belongs to feature 006, whose `INVOKE` reads the schema, and
 to 007, where §10 p.10-11's `precision` field lives. `ESQLC-2015` is registered
@@ -651,7 +657,7 @@ correction to what those gates claimed, not a new limitation.
 
 ## DIV-056 — The 30/31-character indicator collision is diagnosed, not reproduced
 
-**Status:** proposed · **Feature:** 006 · **Citation:** `[SQLPM/C §2 p.2-22]`
+**Status:** accepted · **Feature:** 006 · **Citation:** `[SQLPM/C §2 p.2-22]`
 
 **NonStop:** `INVOKE` names a generated indicator by appending `_I` to the
 column name. §2 p.2-22's own output shows the appended form. For a column name

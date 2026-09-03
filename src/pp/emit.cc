@@ -218,6 +218,18 @@ std::string placeholderise_inputs(
     return out;
 }
 
+// Like word_after but preserving case: an object name and a structure tag are
+// identifiers, not keywords.
+std::string word_after_raw(const std::string &b, std::size_t from) {
+    while (from < b.size() && std::isspace((unsigned char)b[from])) ++from;
+    std::string w;
+    while (from < b.size() &&
+           (std::isalnum((unsigned char)b[from]) || b[from] == '_' ||
+            b[from] == '.' || b[from] == '=' || b[from] == '$' || b[from] == '\\'))
+        w += b[from++];
+    return w;
+}
+
 const char *type_macro(unsigned t) {
     switch (t) {
         case 1: return "ESQLC_T_CHAR_FIXED";
@@ -297,7 +309,8 @@ std::string strip_charset_clauses(const std::string &c) {
 }  // namespace
 
 std::string emit(const std::string &file, const ScanResult &sr,
-                 std::vector<HostVar> &vars, Diag &d) {
+                 std::vector<HostVar> &vars, Diag &d,
+                 const std::string &schema_path) {
     std::ostringstream o;
 
     // FR-001.7: the pragma is mandatory and must precede all SQL and C.
@@ -315,6 +328,11 @@ std::string emit(const std::string &file, const ScanResult &sr,
     o << "#include \"esqlc.h\"\n";
 
     bool in_declare = false;
+    // Gate 9. Loaded lazily: a unit with no INVOKE never reads the cache, so a
+    // build without --schema is only an error where INVOKE needs it.
+    Schema   schema;
+    bool     schema_tried = false;
+    SchemaErr schema_err  = SchemaErr::None;
     int  hv_seq = 0;
     std::map<std::string, CursorInfo> cursors;   // name -> declaration (T362)
     bool at_line_start = true;
@@ -387,6 +405,81 @@ std::string emit(const std::string &file, const ScanResult &sr,
                     "'" + k.keyword + "' must appear in " +
                     (h->where == PosClass::Decl ? "declaration" : "executable") +
                     " position");
+            continue;
+        }
+
+        // ---- INVOKE (T979-T984) -----------------------------------------
+        if (k.keyword == "INVOKE") {
+            if (!schema_tried) {
+                schema_err = schema_read(schema_path, schema);
+                schema_tried = true;
+            }
+            if (schema_err == SchemaErr::Absent) {
+                d.error("ESQLC-6002", k.pos,
+                        "INVOKE needs a schema cache and none was given; pass "
+                        "--schema <file>. The preprocessor never opens a database "
+                        "connection (NFR-001.2, NFR-006.2)");
+                continue;
+            }
+            if (schema_err == SchemaErr::Unreadable) {
+                d.error("ESQLC-6008", k.pos,
+                        "cannot read the schema cache '" + schema_path + "'");
+                continue;
+            }
+            // `INVOKE <object> AS <tag>` — the object is the first word of the
+            // body, the tag the word after AS. Read as landmarks, in the shape
+            // name_after_verb established, rather than by parsing.
+            // The body includes the leading keyword, so skip it — the same
+            // shape name_after_verb uses for OPEN/CLOSE/FETCH.
+            std::size_t vp = find_kw(k.body, "INVOKE");
+            std::string object =
+                word_after_raw(k.body, vp == std::string::npos ? 0 : vp + 6);
+            std::size_t ap = find_kw(k.body, "AS");
+            std::string tag = (ap == std::string::npos)
+                                ? object : word_after_raw(k.body, ap + 2);
+            if (object.empty() || tag.empty()) {
+                d.error("ESQLC-6001", k.pos,
+                        "INVOKE needs an object name and a structure tag");
+                continue;
+            }
+            if (object[0] == '=') {
+                // FR-006.2d is out of slice: DIV-002 still has TACL DEFINEs
+                // unresolved, and the manual's own examples use `=customer`.
+                d.error("ESQLC-1012", k.pos,
+                        "a class MAP DEFINE ('" + object + "') for an invoked "
+                        "object is not implemented in this slice; DIV-002 has "
+                        "TACL DEFINEs unresolved. Owned by feature 006");
+                continue;
+            }
+            const std::vector<SchemaColumn> *cols = schema.find(object);
+            if (!cols) {
+                d.error("ESQLC-6001", k.pos,
+                        "invoked object '" + object +
+                        "' is not in the schema cache");
+                continue;
+            }
+            std::string gen = invoke_generate(object, tag, *cols,
+                                              schema.captured, k.pos, d);
+            if (gen.empty()) continue;      // invoke_generate diagnosed
+
+            // T981 — the #line for this construct, then the generated text.
+            // Generated lines have no counterpart in the source, so the emitted
+            // text carries none: the next verbatim C chunk restores the
+            // directive from its own recorded position. Gates 1 and 2 both hit
+            // the drifting-#line defect and generated multi-line output is the
+            // largest opportunity for it yet.
+            // The CHARACTER SET clause is a NonStop C compiler extension
+            // (§1 p.1-2) that gcc and clang do not have, so it is stripped from
+            // emitted C exactly as Gate 8 strips a hand-written one. The
+            // association is not lost: the RE-PARSE below reads the clause
+            // first and records the set in the descriptor.
+            //
+            // Order matters and cost me a build: parse the clause-bearing text,
+            // emit the stripped text.
+            parse_declare_section(gen, k.pos, vars, d);
+            o << strip_charset_clauses(gen);
+            at_line_start = true;
+
             continue;
         }
 
