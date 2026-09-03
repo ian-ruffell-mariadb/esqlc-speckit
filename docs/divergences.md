@@ -399,6 +399,12 @@ strips trailing spaces from a `CHAR(n)` on `SELECT` unless the session sets
 `PAD_CHAR_TO_FULL_LENGTH`. The same row reads back as 12 bytes or 18 depending
 only on `sql_mode`.
 
+**Rationale:** the manual makes program behaviour depend on the padding — §2
+p.2-8 says comparison operations fail against an under-padded array — so a
+retrieval that silently returns a shorter string changes what a conforming
+program computes. That is Constitution III's silent semantic change, and it is
+invisible: the value looks correct, only its length differs.
+
 **Decision (2026-08-28): option 1.** The runtime sets `PAD_CHAR_TO_FULL_LENGTH`
 on its own session at connect. It makes every retrieval path faithful at once
 with no per-fetch cost, requires no customer source change, and the mode is

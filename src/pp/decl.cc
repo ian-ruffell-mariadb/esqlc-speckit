@@ -105,14 +105,6 @@ bool is_float_keyword(const std::string &w, unsigned *width) {
 }
 
 
-// Error recovery for a structured declaration. Skipping to the next `;` — the
-// rule for a scalar — lands *inside* a struct, because `short len;` has one.
-// The remainder was then re-parsed as declarations and produced a spurious
-// ESQLC-1012 on the closing `}`. Skip past the brace first, then to the `;`.
-static void skip_struct(const std::vector<Tok> &t, std::size_t &i) {
-    while (i < t.size() && t[i].text != "}") ++i;
-    while (i < t.size() && t[i].text != ";") ++i;
-}
 
 
 // T862, T863, T864 — the infix CHARACTER SET clause.
