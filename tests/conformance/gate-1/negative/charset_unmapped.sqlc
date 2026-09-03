@@ -1,0 +1,9 @@
+/* T822 — ISO88593 is a keyword the manual defines and MariaDB has no
+   counterpart for. The gap is MariaDB's, so the diagnostic sends the reader
+   to MariaDB's charset list. Distinct from ESQLC-2014. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  char CHARACTER SET ISO88593 south_european[9];
+EXEC SQL END DECLARE SECTION;
+int main(void) { return 0; }

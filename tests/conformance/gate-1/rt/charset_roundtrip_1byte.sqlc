@@ -1,0 +1,34 @@
+/* T817 — ISO88592 end to end, and FR-002.28 at a charset column: no
+   terminator is appended, so the sentinel byte past the column length lives. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  char CHARACTER SET ISO88592 c_l2[9];
+  char CHARACTER SET ISO88592 back[9];
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  k = 91;
+  memcpy(c_l2, "A\xA9""CDEFGH", 8);
+  EXEC SQL INSERT INTO charsets (k, c_l2) VALUES (:k, :c_l2);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+  k = 91;
+  memset(back, 0, sizeof back);
+  back[8] = '#';                       /* FR-002.28: must survive */
+  EXEC SQL SELECT c_l2 INTO :back FROM charsets WHERE k = :k;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (memcmp(back, c_l2, 8) != 0) {
+    printf("FAIL: ISO88592 bytes altered\n"); EXEC SQL ROLLBACK WORK; return 1;
+  }
+  if (back[8] != '#') {
+    printf("FAIL: a terminator was appended (FR-002.28)\n");
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("charset_roundtrip_1byte ok\n");
+  return 0;
+}

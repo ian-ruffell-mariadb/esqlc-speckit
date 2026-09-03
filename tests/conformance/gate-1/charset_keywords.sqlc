@@ -1,0 +1,29 @@
+/* T815 — every keyword this slice maps, plus UNKNOWN and an absent clause.
+   p.2-24: UNKNOWN "indicates an unknown single-byte character set and is
+   equivalent to omitting the CHARACTER SET clause", so both must yield 0 —
+   which is what settles SD-1 after seven gates of carrying it. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  char CHARACTER SET ISO88591 a[9];
+  char CHARACTER SET ISO88592 b[9];
+  char CHARACTER SET ISO88597 c[9];
+  char CHARACTER SET ISO88598 d[9];
+  char CHARACTER SET ISO88599 e[9];
+  char CHARACTER SET KSC5601  f[9];
+  char CHARACTER SET UNKNOWN  g[9];
+  char                        h[9];
+EXEC SQL END DECLARE SECTION;
+/* Descriptors are emitted per statement, so the variables have to be
+   REFERENCED for their charset ids to appear anywhere. The first draft of this
+   fixture had no EXEC SQL at all and the assertion was checking descriptors
+   that could not exist — a broken test, not a missing feature. */
+int main(void) {
+  EXEC SQL INSERT INTO charsets (k, c_l1, c_l2, c_greek)
+           VALUES (0, :a, :b, :c);
+  EXEC SQL INSERT INTO charsets (k, c_l1, c_l2, c_greek)
+           VALUES (1, :d, :e, :f);
+  EXEC SQL INSERT INTO charsets (k, c_l1, c_l2)
+           VALUES (2, :g, :h);
+  return 0;
+}

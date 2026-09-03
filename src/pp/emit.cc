@@ -228,6 +228,72 @@ const char *type_macro(unsigned t) {
     }
 }
 
+
+// T865 — remove the CHARACTER SET clause from emitted C.
+//
+// §1 p.1-2: "The C compiler accepts the CHARACTER SET clause in a host-variable
+// declaration to associate a single-byte or double-byte character set such as
+// Kanji or KSC5601 with a host variable." On NonStop the clause is a *C
+// compiler extension*, so the preprocessor could leave it in place and the
+// declaration would still compile.
+//
+// gcc and clang have no such extension. `char CHARACTER SET ISO88591 a[9];` is
+// not valid C here, so the clause is consumed like `#pragma SQL` is (FR-001.7)
+// rather than passed through like everything else in a C region (FR-001.19).
+// The association is not lost: it has already been recorded in the descriptor's
+// charset field, which is where the runtime reads it.
+//
+// Recorded in DIV-055 — it is the one place where a declaration a customer
+// wrote is not emitted byte-for-byte, and Principle II makes that worth saying
+// out loud rather than doing quietly.
+std::string strip_charset_clauses(const std::string &c) {
+    std::string out;
+    std::size_t i = 0;
+    while (i < c.size()) {
+        // Match CHARACTER, whitespace, SET at a token boundary.
+        if ((c[i] == 'C' || c[i] == 'c') &&
+            (i == 0 || !(std::isalnum((unsigned char)c[i - 1]) || c[i - 1] == '_'))) {
+            static const char kw[] = "CHARACTER";
+            std::size_t j = i, n = 0;
+            while (j < c.size() && n < 9 &&
+                   std::toupper((unsigned char)c[j]) == kw[n]) { ++j; ++n; }
+            if (n == 9) {
+                std::size_t k = j;
+                while (k < c.size() && std::isspace((unsigned char)c[k])) ++k;
+                std::size_t m = k, sn = 0;
+                static const char kset[] = "SET";
+                while (m < c.size() && sn < 3 &&
+                       std::toupper((unsigned char)c[m]) == kset[sn]) { ++m; ++sn; }
+                if (sn == 3 && k != j) {
+                    // Optional IS, then the keyword. Both consumed.
+                    std::size_t q = m;
+                    while (q < c.size() && std::isspace((unsigned char)c[q])) ++q;
+                    std::size_t w = q;
+                    while (w < c.size() && (std::isalnum((unsigned char)c[w]) || c[w] == '_')) ++w;
+                    std::string first = c.substr(q, w - q);
+                    std::string up;
+                    for (char ch : first) up += (char)std::toupper((unsigned char)ch);
+                    if (up == "IS") {
+                        q = w;
+                        while (q < c.size() && std::isspace((unsigned char)c[q])) ++q;
+                        w = q;
+                        while (w < c.size() && (std::isalnum((unsigned char)c[w]) || c[w] == '_')) ++w;
+                    }
+                    // Newlines inside the clause are preserved so #line stays
+                    // honest; everything else becomes a single space.
+                    for (std::size_t z = i; z < w; ++z)
+                        if (c[z] == '\n') out += '\n';
+                    out += ' ';
+                    i = w;
+                    continue;
+                }
+            }
+        }
+        out += c[i++];
+    }
+    return out;
+}
+
 }  // namespace
 
 std::string emit(const std::string &file, const ScanResult &sr,
@@ -288,11 +354,16 @@ std::string emit(const std::string &file, const ScanResult &sr,
     for (const auto &ch : sr.chunks) {
         if (!ch.is_sql) {
             line_directive(ch.pos.line);
-            o << ch.c_text;
-            track(ch.c_text);
+            // Inside a declare section the CHARACTER SET clause is consumed
+            // rather than passed through: it is a NonStop C compiler extension
+            // (§1 p.1-2) that gcc and clang do not have. Everywhere else the C
+            // region is emitted byte-for-byte (FR-001.19).
+            const std::string ctext =
+                in_declare ? strip_charset_clauses(ch.c_text) : ch.c_text;
+            o << ctext;
+            track(ctext);
             if (in_declare) {
-                // The declarations themselves are valid C: emit verbatim above,
-                // and additionally harvest descriptors from them.
+                // Harvest descriptors from the declarations we just emitted.
                 parse_declare_section(ch.c_text, ch.pos, vars, d);
             }
             continue;
@@ -611,7 +682,8 @@ std::string emit(const std::string &file, const ScanResult &sr,
                     o << "    { &" << hv->name << ", 0, " << type_macro(hv->type)
                       << ", " << hv->width << "u, " << hv->capacity << "u, 0, "
                       << (hv->is_signed ? 1 : 0) << ", "
-                      << (b.second ? "ESQLC_DIR_OUT" : "ESQLC_DIR_IN") << ", 0 },\n";
+                      << (b.second ? "ESQLC_DIR_OUT" : "ESQLC_DIR_IN")
+                      << ", " << hv->charset << " },\n";   // Gate 8
                 }
                 o << "  };\n";
             }
@@ -669,7 +741,8 @@ std::string emit(const std::string &file, const ScanResult &sr,
                 o << "    { &" << hv->name << ", " << ind << ", "
                   << type_macro(hv->type) << ", " << hv->width << "u, "
                   << hv->capacity << "u, 0, " << (hv->is_signed ? 1 : 0) << ", "
-                  << (c.is_out ? "ESQLC_DIR_OUT" : "ESQLC_DIR_IN") << ", 0 },\n";
+                  << (c.is_out ? "ESQLC_DIR_OUT" : "ESQLC_DIR_IN")
+                  << ", " << hv->charset << " },\n";       // Gate 8
             }
             o << "  };\n";
             if (bad) { o << "} while (0);\n"; continue; }
@@ -759,7 +832,8 @@ std::string emit(const std::string &file, const ScanResult &sr,
                     o << "    { &" << hv->name << ", " << ind << ", "
                       << type_macro(hv->type)
                       << ", " << hv->width << "u, " << hv->capacity << "u, 0, "
-                      << (hv->is_signed ? 1 : 0) << ", ESQLC_DIR_IN, 0 },\n";
+                      << (hv->is_signed ? 1 : 0) << ", ESQLC_DIR_IN, "
+                      << hv->charset << " },\n";           // Gate 8
                 }
                 o << "  };\n";
                 if (bad) { o << "} while (0);\n"; continue; }

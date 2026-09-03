@@ -1,0 +1,7 @@
+/* T821 — a typo. The keyword is not one of the twelve p.2-24 lists. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  char CHARACTER SET ISO8859X bad[9];
+EXEC SQL END DECLARE SECTION;
+int main(void) { return 0; }

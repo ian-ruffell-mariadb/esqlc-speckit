@@ -584,7 +584,7 @@ A mutation dropping it is caught by `rt/int_overflow_8300`.
 
 ## DIV-055 — Character-set mapping, and byte-verbatim binding
 
-**Status:** proposed · **Feature:** 002, 003 · **Citation:** `[SQLPM/C §2 pp.2-3, 2-24]`, `[SQLPM/C §10 pp.10-6, 10-11]`
+**Status:** accepted · **Feature:** 002, 003 · **Citation:** `[SQLPM/C §2 pp.2-3, 2-24]`, `[SQLPM/C §10 pp.10-6, 10-11]`
 
 **NonStop:** a host variable carries `CHARACTER SET ISO8859n` (n = 1..9),
 `KANJI`, `KSC5601`, or `UNKNOWN` (§2 p.2-24). The set describes what the bytes
@@ -624,6 +624,22 @@ four ISO sets). A byte above 0x7F round-trips unaltered.
 `UNKNOWN` is unaffected. One using `KANJI`, `NATIONAL CHARACTER`, or 8859-3/4/5/6
 does not compile and has no workaround here. One relying on ISO 8859-1
 collation across 0x80–0x9F will sort differently.
+
+**§10 p.10-11's character-set ID check is not reproducible.** SQL/MP checks a
+host variable's declared set against the column's expected set. MariaDB's result
+metadata cannot supply the column's set: `MYSQL_FIELD.charsetnr` reports the
+*result set's* charset, so a `euckr` column and a `latin2` column selected
+together both report the same number — 224 (`utf8mb4`) under a default client
+charset, 63 (`binary`) under this one. The information was never available,
+before or after this slice.
+
+Consequence: reading a column into a host variable declared for a different
+character set delivers correct bytes that the program will misinterpret, and
+nothing refuses it. That is the one silent failure this slice does not close.
+Recovering the column's set needs a per-statement `information_schema` query;
+the check properly belongs to feature 006, whose `INVOKE` reads the schema, and
+to 007, where §10 p.10-11's `precision` field lives. `ESQLC-2015` is registered
+and never emitted.
 
 **Correction to Gates 1–7.** FR-002.30's byte-verbatim guarantee was, before
 this slice, true only for ASCII: the runtime set no client charset and inherited

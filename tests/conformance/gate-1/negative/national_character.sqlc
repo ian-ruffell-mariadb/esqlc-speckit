@@ -1,0 +1,10 @@
+/* T824 — NATIONAL CHARACTER means the system default multibyte set, which
+   §2 p.2-3 says is KANJI unless changed during system generation. SD-14
+   refuses KANJI, so this refuses with it — ESQLC-1012, naming the dependency,
+   because FR-002.5 is out of slice rather than unimplementable. */
+#pragma SQL
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  char NATIONAL CHARACTER emp_name[21];
+EXEC SQL END DECLARE SECTION;
+int main(void) { return 0; }

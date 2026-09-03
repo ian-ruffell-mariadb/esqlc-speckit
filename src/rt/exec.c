@@ -227,6 +227,35 @@ int esqlc_stmt_exec(const char *body, size_t body_len,
                 rc = -1; goto done;
             }
 
+            /* T875 was planned here and is NOT implementable. Recorded
+             * rather than removed silently.
+             *
+             * §10 p.10-11 says NonStop SQL/MP "checks the precision field to
+             * ensure that the character-set ID matches the expected character
+             * set of the parameter or column", and the plan assumed result
+             * metadata could supply the column's set. Measured, it cannot:
+             * MYSQL_FIELD.charsetnr reports the RESULT SET's charset, not the
+             * column's own. For `select v_kr, c_l2` — a euckr column and a
+             * latin2 column — both come back identical:
+             *
+             *     default client charset   both charsetnr 224  (utf8mb4)
+             *     binary  client charset   both charsetnr 63   (binary)
+             *
+             * So the information was never there, before or after this slice.
+             * Recovering it needs a per-statement information_schema.COLUMNS
+             * query, which is the round trip the table-name landmark was
+             * designed to avoid.
+             *
+             * It also belongs elsewhere: §10 p.10-11 is about the SQLDA's
+             * precision field, which is dynamic SQL — feature 007 — and the
+             * preprocessor cannot know a column's charset either without the
+             * schema access NFR-001.2 forbids. Feature 006's INVOKE reads the
+             * schema and is where this check can live.
+             *
+             * FR-002.22 is unaffected: it asks for the character/numeric FAMILY
+             * check above, which works and is tested. DIV-055 records the gap.
+             */
+
             rb[j].buffer  = v->addr;
             rb[j].is_null = &rnull[j];
             switch (v->type) {

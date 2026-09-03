@@ -83,6 +83,7 @@ struct HostVar {
     unsigned    type = 0;             // ESQLC_T_*
     unsigned    width = 0;            // bytes on the wire
     unsigned    capacity = 0;         // declared array size
+    unsigned short charset = 0;       // Gate 8; 0 = UNKNOWN (connection default)
     bool        is_signed = true;
     std::string c_decl;               // verbatim C declaration to re-emit
 };
@@ -115,6 +116,22 @@ std::string whenever_checks(const WheneverState &st);
 
 // SD-5: WHENEVER applies to DML, DCL and DDL, not to transaction control.
 bool whenever_applies(const std::string &keyword);
+
+// ---- character sets (Gate 8, T860) -------------------------------------
+// Mapped: MariaDB has it. Unmapped: the keyword is real, MariaDB has no
+// counterpart (the gap is MariaDB's). Unspecified: the keyword is real and the
+// manual names no encoding (the gap is the manual's). The last two get
+// different diagnostics because they send a reader to different places.
+enum class CsClass { Mapped, Unmapped, Unspecified };
+
+struct CharsetKeyword {
+    const char    *keyword;
+    unsigned short id;       // project-internal; NOT the SQLDA id (002 Q7)
+    CsClass        cls;
+};
+
+const CharsetKeyword *charset_lookup(const std::string &kw);
+const CharsetKeyword *charset_table(int *n);
 
 // ---- SQLSA (Gate 5, T560-T564) -----------------------------------------
 // Both version families, always emitted together: the manual names the types

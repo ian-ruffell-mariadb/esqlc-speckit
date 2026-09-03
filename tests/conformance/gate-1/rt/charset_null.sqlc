@@ -1,0 +1,33 @@
+/* T819 — a negative indicator on a charset VARCHAR. val holds text so a
+   runtime that stores the buffer rather than sending null is caught. */
+#pragma SQL
+#include <stdio.h>
+#include <string.h>
+long sqlcode;
+EXEC SQL BEGIN DECLARE SECTION;
+  short k;
+  struct { short len; char CHARACTER SET KSC5601 val[11]; } v_kr;
+  short v_ind;
+  struct { short len; char CHARACTER SET KSC5601 val[11]; } back;
+  short b_ind;
+EXEC SQL END DECLARE SECTION;
+
+int main(void) {
+  EXEC SQL BEGIN WORK;
+  k = 93;
+  memcpy(v_kr.val, "\xB0\xA1\xB0\xA2", 4);
+  v_kr.len = 4;
+  v_ind = -1;
+  EXEC SQL INSERT INTO charsets (k, v_kr) VALUES (:k, :v_kr :v_ind);
+  if (sqlcode != 0) { printf("FAIL: insert sqlcode=%ld\n", sqlcode); return 1; }
+  k = 93;
+  EXEC SQL SELECT v_kr INTO :back :b_ind FROM charsets WHERE k = :k;
+  if (sqlcode != 0) { printf("FAIL: select sqlcode=%ld\n", sqlcode); return 1; }
+  if (b_ind != -1) {
+    printf("FAIL: indicator %d, want -1; len=%d\n", (int)b_ind, (int)back.len);
+    EXEC SQL ROLLBACK WORK; return 1;
+  }
+  EXEC SQL ROLLBACK WORK;
+  printf("charset_null ok\n");
+  return 0;
+}

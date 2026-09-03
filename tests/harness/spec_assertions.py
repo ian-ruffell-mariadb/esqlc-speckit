@@ -582,6 +582,78 @@ def assert_declare_with_comments(out: str) -> None:
     compiles(out, "declare_with_comments")
 
 
+
+# Gate 8 charset ids. Deliberately project-internal: §10 p.10-6 puts the real
+# character-set ID in the SQLDA's `precision` field and p.10-11 says the values
+# come from the `sqlh` header, which this project does not have (002 Q7).
+CS_UNKNOWN, CS_8859_1, CS_8859_2, CS_8859_7, CS_8859_8, CS_8859_9, CS_KSC5601 = (
+    0, 1, 2, 7, 8, 9, 51)
+
+
+def assert_charset_clause(out: str) -> None:
+    """T830, T831, T832, T842 — the infix clause reaches the descriptor."""
+    d = {x["name"]: x for x in descriptors(out)}
+    check("FR-002.4", "c_l2" in d and int(d["c_l2"]["charset"]) == CS_8859_2,
+          f"ISO88592 must reach the descriptor; got "
+          f"{d.get('c_l2', {}).get('charset')}")
+    # T831 — `CHARACTER SET IS` is the same clause (p.2-24: "[ IS ] are
+    # keywords that must precede the character set name").
+    check("FR-002.4", "c_greek" in d and int(d["c_greek"]["charset"]) == CS_8859_7,
+          f"CHARACTER SET IS must be accepted identically; got "
+          f"{d.get('c_greek', {}).get('charset')}")
+    check("FR-002.4", "plain" in d and int(d["plain"]["charset"]) == CS_UNKNOWN,
+          "an absent clause is UNKNOWN, i.e. 0")
+    # T832 — the clause must not disturb the array it interrupts.
+    for n in ("c_l2", "c_greek", "plain"):
+        check("FR-002.3", n in d and int(d[n]["capacity"]) == 9
+              and int(d[n]["width"]) == 8,
+              f"{n} must stay capacity 9 / width 8 with the clause present")
+    for sql, _ in EXEC_RE.findall(out):
+        check("FR-003.10", ":" not in sql,
+              f"no host-variable reference may survive: {sql!r}")
+    compiles(out, "charset_clause")
+
+
+def assert_charset_varchar(out: str) -> None:
+    """T833, T834, T835 — the clause inside Gate 7's positional shape check."""
+    d = {x["name"]: x for x in descriptors(out)}
+    check("FR-002.6", "v_kr" in d and d["v_kr"]["type"] == "ESQLC_T_CHAR_VAR",
+          "a VARCHAR structure with a charset clause must still be recognised — "
+          "Gate 7's shape check is positional and this inserts three tokens")
+    check("FR-002.6", "v_kr" in d and int(d["v_kr"]["charset"]) == CS_KSC5601,
+          f"KSC5601 must reach the descriptor; got "
+          f"{d.get('v_kr', {}).get('charset')}")
+    check("FR-002.6", "v_kr" in d and int(d["v_kr"]["capacity"]) == 11,
+          "capacity is still the declared val size (SD-10)")
+    flat = " ".join(out.split())
+    check("NFR-002.2", "sizeof(v_kr.len) == 2" in flat
+          and "__typeof__(v_kr), val) == 2" in flat,
+          "the VARCHAR layout assertions must survive the clause")
+    check("FR-002.15", "v_kr" in d and d["v_kr"]["ind"] == "&v_ind",
+          f"the indicator must still associate; got {d.get('v_kr', {}).get('ind')}")
+    compiles(out, "charset_varchar")
+
+
+def assert_charset_keywords(out: str) -> None:
+    """T836, T837 — one id per set, and UNKNOWN is 0."""
+    d = {x["name"]: x for x in descriptors(out)}
+    want = {"a": CS_8859_1, "b": CS_8859_2, "c": CS_8859_7, "d": CS_8859_8,
+            "e": CS_8859_9, "f": CS_KSC5601, "g": CS_UNKNOWN, "h": CS_UNKNOWN}
+    for n, cs in want.items():
+        check("FR-002.8", n in d and int(d[n]["charset"]) == cs,
+              f"{n} must carry charset {cs}; got {d.get(n, {}).get('charset')}")
+    # T837. p.2-24 makes UNKNOWN and an absent clause equivalent, which is what
+    # resolves SD-1 after seven gates of carrying it as provisional.
+    check("FR-002.8", "g" in d and "h" in d
+          and d["g"]["charset"] == d["h"]["charset"],
+          "UNKNOWN and an absent clause must be indistinguishable (p.2-24)")
+    # Distinct sets must not collide onto one id.
+    ids = {int(d[n]["charset"]) for n in ("a", "b", "c", "d", "e", "f") if n in d}
+    check("FR-002.8", len(ids) == 6,
+          f"six distinct sets must yield six distinct ids; got {sorted(ids)}")
+    compiles(out, "charset_keywords")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("usage: spec_assertions.py <esqlcpp>", file=sys.stderr)
@@ -648,6 +720,15 @@ def main() -> int:
     out = emit(pp, FIX / "declare_with_comments.sqlc")
     if out:
         assert_declare_with_comments(out)
+    out = emit(pp, FIX / "charset_clause.sqlc")
+    if out:
+        assert_charset_clause(out)
+    out = emit(pp, FIX / "charset_varchar.sqlc")
+    if out:
+        assert_charset_varchar(out)
+    out = emit(pp, FIX / "charset_keywords.sqlc")
+    if out:
+        assert_charset_keywords(out)
 
     for f in failures:
         print(f"FAIL {f}")

@@ -117,7 +117,7 @@ diagnosed with its own reason rather than one vague message.
 
 ## Slice decisions
 
-- **SD-1 — now resolved, not provisional.** `UNKNOWN` binds as the connection
+- **SD-1 — RESOLVED (2026-09-03), no longer carried.** `UNKNOWN` binds as the connection
   default. p.2-24 calls it *"an unknown single-byte character set"* and
   *"equivalent to omitting the CHARACTER SET clause"*, so the connection default
   is the faithful reading rather than a convenience. **This closes the decision

@@ -114,6 +114,37 @@ static void skip_struct(const std::vector<Tok> &t, std::size_t &i) {
     while (i < t.size() && t[i].text != ";") ++i;
 }
 
+
+// T862, T863, T864 — the infix CHARACTER SET clause.
+//
+// §2 p.2-22 writes `char CHARACTER SET ISO88591 type_picx1[11];` and p.2-25
+// writes `struct { short len; char CHARACTER SET KANJI val[10]; }`, so the
+// clause sits between the type keyword and the NAME. It is the first infix
+// construct this parser has met, and Gate 7's VARCHAR shape check is
+// positional, so both callers consume it here rather than each coping alone.
+//
+// `CHARACTER SET [ IS ] charset` per p.2-24 — IS is optional.
+//
+// Consumes the clause if present and returns the keyword's table entry, or
+// nullptr for "no clause" (which p.2-24 makes equivalent to UNKNOWN). `*bad`
+// receives the offending token when a keyword is present but unrecognised, so
+// the caller can name it in ESQLC-2006.
+const CharsetKeyword *take_charset(const std::vector<Tok> &t, std::size_t &i,
+                                   std::string *bad, Pos *at) {
+    if (i + 2 >= t.size()) return nullptr;
+    if (t[i].text != "CHARACTER" || t[i + 1].text != "SET") return nullptr;
+    std::size_t j = i + 2;
+    if (j < t.size() && t[j].text == "IS") ++j;      // p.2-24: optional
+    if (j >= t.size()) return nullptr;
+    *at  = t[j].pos;
+    *bad = t[j].text;
+    const CharsetKeyword *cs = charset_lookup(t[j].text);
+    i = j + 1;                                       // consumed either way, so
+                                                     // the caller can diagnose
+                                                     // and keep parsing
+    return cs;
+}
+
 }  // namespace
 
 void parse_declare_section(const std::string &body, Pos at,
@@ -123,6 +154,29 @@ void parse_declare_section(const std::string &body, Pos at,
     while (i < t.size()) {
         // Skip stray semicolons the caller left in.
         if (t[i].text == ";") { ++i; continue; }
+
+        // T871 — NATIONAL CHARACTER [VARYING] means the system default
+        // multibyte character set, which §2 p.2-3 says is KANJI "unless it is
+        // otherwise set or changed during system generation". SD-14 refuses
+        // KANJI because the manual names no encoding for it, so these refuse
+        // with it — and "system generation" has nothing to consult here even if
+        // it did not.
+        //
+        // ESQLC-1012 rather than ESQLC-2014: FR-002.5 and FR-002.7 are out of
+        // this slice, and 1012 is how the project refuses anything out of
+        // scope. The message names the dependency so the reason is not a
+        // mystery — the previous behaviour reported "scalar char host variable
+        // is not implemented", which is true and useless.
+        if (t[i].text == "NATIONAL" ||
+            (t[i].text == "char" && i + 1 < t.size() && t[i + 1].text == "NATIONAL")) {
+            d.error("ESQLC-1012", t[i].pos,
+                    "NATIONAL CHARACTER uses the system default multibyte character "
+                    "set, which is KANJI (§2 p.2-3); KANJI has no chosen encoding "
+                    "here (ESQLC-2014), so NATIONAL CHARACTER is not implemented. "
+                    "Owned by feature 002");
+            while (i < t.size() && t[i].text != ";") ++i;
+            continue;
+        }
 
         // FR-002.12 / slice: unsigned long long is rejected outright.
         if (t[i].text == "unsigned" && i + 2 < t.size() &&
@@ -143,58 +197,105 @@ void parse_declare_section(const std::string &body, Pos at,
         // field of it.
         if (t[i].text == "struct") {
             Pos sp = t[i].pos;
-            if (i + 1 >= t.size() || t[i + 1].text != "{") {
-                d.error("ESQLC-2003", sp,
-                        "only a VARCHAR structure (short len; char val[n];) may be "
-                        "used as a host variable");
-                skip_struct(t, i);
-                continue;
-            }
-            // short len ; char val [ n ] ; } name
-            const char *want[] = {"{", nullptr, "len", ";", "char", "val", "["};
-            bool shape = i + 12 < t.size();
+            // T864 — a moving cursor rather than fixed offsets.
+            //
+            // Gate 7 matched this shape positionally, which was fine until the
+            // CHARACTER SET clause inserted three tokens (four with IS) into
+            // the middle of it. §2 p.2-25 writes exactly that:
+            //     struct { short len; char CHARACTER SET KANJI val[10]; }
+            // so the interruption is the manual's own example, not an edge case.
+            std::size_t p = i;
+            auto want = [&](const char *lit) {
+                if (p < t.size() && t[p].text == lit) { ++p; return true; }
+                return false;
+            };
+            std::string cs_bad; Pos cs_at{}; const CharsetKeyword *cs = nullptr;
+            bool had_clause = false;
+            bool shape = want("struct") && want("{");
+            // The length field's TYPE is consumed as *any* token and checked
+            // below. Requiring "short" here made ESQLC-2002 unreachable: a
+            // `int len` field failed the shape match and came out as
+            // ESQLC-2003 "not a VARCHAR structure", which is the wrong
+            // diagnostic and lost the specific advice p.2-9 gives.
+            std::size_t len_type = p;
             if (shape) {
-                shape = t[i + 1].text == want[0] &&
-                        t[i + 3].text == want[2] && t[i + 4].text == want[3] &&
-                        t[i + 5].text == want[4] && t[i + 6].text == want[5] &&
-                        t[i + 7].text == want[6] && t[i + 9].text == "]" &&
-                        t[i + 10].text == ";" && t[i + 11].text == "}";
+                shape = (p + 1 < t.size());
+                if (shape) { ++p; ++p; }             // the type, then `len`
+                shape = shape && want(";") && want("char");
             }
-            if (!shape) {
+            if (shape) {
+                had_clause = (p + 1 < t.size() && t[p].text == "CHARACTER"
+                                               && t[p + 1].text == "SET");
+                cs = take_charset(t, p, &cs_bad, &cs_at);
+            }
+            std::size_t val_tok = p;
+            std::string n_tok;
+            if (shape) {
+                shape = (p < t.size() && t[p].text == "val");
+                if (shape) ++p;
+                shape = shape && want("[");
+                if (shape && p < t.size()) { n_tok = t[p].text; ++p; } else shape = false;
+                shape = shape && want("]") && want(";") && want("}");
+            }
+            if (!shape || p >= t.size()) {
                 d.error("ESQLC-2003", sp,
                         "only a VARCHAR structure (short len; char val[n];) may be "
                         "used as a host variable");
-                skip_struct(t, i);
+                while (i < t.size() && t[i].text != ";") ++i;
                 continue;
             }
-            // T764 — FR-002.21: the length field must be `short`, not `int`.
-            if (t[i + 2].text != "short") {
-                d.error("ESQLC-2002", t[i + 2].pos,
+            // T764 (Gate 7) — FR-002.21: the length field must be `short`.
+            if (t[len_type].text != "short") {
+                d.error("ESQLC-2002", t[len_type].pos,
                         "a hand-declared VARCHAR length field must be 'short', not '" +
-                        t[i + 2].text + "'");
-                skip_struct(t, i);
+                        t[len_type].text + "'");
+                while (i < t.size() && t[i].text != ";") ++i;
                 continue;
             }
-            long n = std::strtol(t[i + 8].text.c_str(), nullptr, 10);
-            if (n <= 1) {
-                d.error("ESQLC-2009", t[i + 8].pos,
-                        "VARCHAR val array size must exceed 1");
-                skip_struct(t, i);
+            if (had_clause && !cs) {
+                d.error("ESQLC-2006", cs_at,
+                        "unrecognised character-set keyword '" + cs_bad +
+                        "'; expected ISO8859n (n = 1-9), KANJI, KSC5601 or UNKNOWN");
+                while (i < t.size() && t[i].text != ";") ++i;
                 continue;
             }
-            HostVar hv;
-            hv.name      = t[i + 12].text;
-            hv.type      = T_CHAR_VAR;
-            // SD-10: capacity is the declared val size; width is capacity - 1,
-            // mirroring FR-002.3's treatment of char v[l+1]. Provisional — it
-            // assumes the CHAR_AS_STRING shape (001 Q2).
-            hv.capacity  = (unsigned)n;
-            hv.width     = (unsigned)n - 1;
-            hv.is_signed = true;
-            hv.c_decl    = "struct { short len; char val[" + t[i + 8].text + "]; } " +
-                           hv.name + ";";
-            out.push_back(hv);
-            i += 13;
+            if (cs && cs->cls == CsClass::Unmapped) {
+                d.error("ESQLC-2013", cs_at,
+                        "character set " + cs_bad + " has no MariaDB counterpart; "
+                        "ISO88591, ISO88592, ISO88597, ISO88598, ISO88599 and "
+                        "KSC5601 are supported");
+                while (i < t.size() && t[i].text != ";") ++i;
+                continue;
+            }
+            if (cs && cs->cls == CsClass::Unspecified) {
+                d.error("ESQLC-2014", cs_at,
+                        "character set KANJI names a script and the manual specifies "
+                        "no encoding; MariaDB offers sjis, cp932, ujis and eucjpms, "
+                        "which differ in byte length and repertoire, so no mapping "
+                        "is chosen");
+                while (i < t.size() && t[i].text != ";") ++i;
+                continue;
+            }
+            {
+                long n = std::strtol(n_tok.c_str(), nullptr, 10);
+                if (n <= 1) {
+                    d.error("ESQLC-2009", t[val_tok].pos,
+                            "VARCHAR val array size must exceed 1");
+                    while (i < t.size() && t[i].text != ";") ++i;
+                    continue;
+                }
+                HostVar hv;
+                hv.name      = t[p].text;
+                hv.type      = T_CHAR_VAR;
+                hv.charset   = cs ? cs->id : 0;
+                hv.capacity  = (unsigned)n;
+                hv.width     = (unsigned)n - 1;      // SD-10
+                hv.is_signed = true;
+                hv.c_decl    = "struct { short len; char val[" + n_tok + "]; } " +
+                               hv.name + ";";
+                out.push_back(hv);
+            }
+            i = p + 1;
             while (i < t.size() && t[i].text != ";") ++i;
             continue;
         }
@@ -216,11 +317,47 @@ void parse_declare_section(const std::string &body, Pos at,
 
         unsigned width = 0; bool sgn = is_signed;
         if (type_word == "char") {
-            // char name[n];
+            // char [CHARACTER SET cs] name[n];
             if (i + 1 >= t.size()) break;
+            std::size_t k = i + 1;
+            std::string cs_bad; Pos cs_at{};
+            bool had_clause = (k + 1 < t.size() && t[k].text == "CHARACTER"
+                                                && t[k + 1].text == "SET");
+            const CharsetKeyword *cs = take_charset(t, k, &cs_bad, &cs_at);
+            if (had_clause && !cs) {
+                d.error("ESQLC-2006", cs_at,
+                        "unrecognised character-set keyword '" + cs_bad +
+                        "'; expected ISO8859n (n = 1-9), KANJI, KSC5601 or UNKNOWN");
+                while (i < t.size() && t[i].text != ";") ++i;
+                continue;
+            }
+            if (cs && cs->cls == CsClass::Unmapped) {
+                // The gap is MariaDB's. Distinct from ESQLC-2014 so the reader
+                // is sent to MariaDB's charset list rather than to SQLRM.
+                d.error("ESQLC-2013", cs_at,
+                        "character set " + cs_bad + " has no MariaDB counterpart; "
+                        "ISO88591, ISO88592, ISO88597, ISO88598, ISO88599 and "
+                        "KSC5601 are supported");
+                while (i < t.size() && t[i].text != ";") ++i;
+                continue;
+            }
+            if (cs && cs->cls == CsClass::Unspecified) {
+                // The gap is the manual's: KANJI names a script, not an
+                // encoding, and MariaDB offers four that differ in byte length
+                // and repertoire. Guessing would store different characters
+                // than the program wrote, silently. SD-14, DIV-055.
+                d.error("ESQLC-2014", cs_at,
+                        "character set KANJI names a script and the manual specifies "
+                        "no encoding; MariaDB offers sjis, cp932, ujis and eucjpms, "
+                        "which differ in byte length and repertoire, so no mapping "
+                        "is chosen");
+                while (i < t.size() && t[i].text != ";") ++i;
+                continue;
+            }
             HostVar hv;
-            hv.name = t[i + 1].text;
-            std::size_t j = i + 2;
+            hv.charset = cs ? cs->id : 0;   // p.2-24: no clause == UNKNOWN == 0
+            hv.name = t[k].text;
+            std::size_t j = k + 1;
             if (j < t.size() && t[j].text == "[") {
                 if (j + 2 < t.size() && t[j + 2].text == "]") {
                     long n = std::strtol(t[j + 1].text.c_str(), nullptr, 10);
