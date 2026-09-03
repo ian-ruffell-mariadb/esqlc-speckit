@@ -107,9 +107,31 @@ requested.
 | `ESQLC-6003` | Column type has no mapping in the 002 table | error | `[§2 pp.2-3..2-4]` |
 | `ESQLC-6004` | Column name cannot be transformed into a valid, unique C identifier | error | `[§2 p.2-19]` |
 | `ESQLC-6005` | Cached schema is stale relative to a reachable database | warn | Principle III |
-| `ESQLC-6006` | `INVOKE` outside declaration position | error | `[§3 p.3-2]` |
+| `ESQLC-6006` | `INVOKE` outside declaration position | **redundant** — see below | `[§3 p.3-2]` |
 | `ESQLC-6007` | Indicator name would collide with its host variable (30/31-char column under default suffix) | error | `[§2 p.2-22]` `[DIV-050]` |
 | `ESQLC-6008` | No read access to the invoked object at preprocess time | error | `[§2 p.2-19]` |
+
+**Three of these eight codes have something to say about them, and it is worth
+saying together rather than as three footnotes.**
+
+`ESQLC-6006` is **redundant with `ESQLC-1008`**. The dispatch table already
+enforces declaration position for every construct and reports `ESQLC-1008`
+("'INVOKE' must appear in declaration position") with file, line and column.
+Gate 9 kept that rather than adding a per-construct duplicate: a second code
+saying the same thing gives a reader two things to look up and the maintainer
+two places to keep in step.
+
+`ESQLC-6005` ("cached schema is stale relative to a reachable database") is
+**unreachable by design**. It needs a reachable database, and the preprocessor
+has none — NFR-001.2 forbids the dependency and SD-16 accepts the consequence.
+It is registered so the number is not re-allocated.
+
+This is the second unreachable code in the project, after 002's `ESQLC-2015`,
+and the first redundant one. The pattern to watch is a registry that accumulates
+codes which can never fire: each is individually defensible and collectively
+they make the registry a worse guide than it looks. `diag_registry` checks that
+every *emitted* code is registered; nothing checks the converse, and these three
+are why that gap is now known.
 
 `ESQLC-6005` is a warning rather than an error so that offline builds remain
 possible, but it must be loud: a stale schema produces structures that mismatch

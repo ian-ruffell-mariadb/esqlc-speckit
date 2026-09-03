@@ -38,8 +38,7 @@ int main(int argc, char **argv) {
     pp::Diag d(in);
     pp::ScanResult sr = pp::scan(src, d);
     std::vector<pp::HostVar> vars;
-    (void)schema;                      // T965 gives this meaning
-    std::string emitted = pp::emit(in, sr, vars, d);
+    std::string emitted = pp::emit(in, sr, vars, d, schema);
 
     if (d.errors() > 0) return 1;      // no output on error
 

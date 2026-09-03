@@ -195,6 +195,54 @@ void parse_declare_section(const std::string &body, Pos at,
         // refused under FR-002.20 rather than bound as its first member — the
         // failure mode where a program passes a record and silently gets one
         // field of it.
+        // T980 — a TAGGED structure is a record, not a VARCHAR.
+        //
+        // Gate 7 taught this parser one structure shape: the anonymous
+        // `struct { short len; char val[n]; }` of a VARCHAR column. Gate 9's
+        // INVOKE generates a *named* one whose fields are each a host variable,
+        // referenced as `:tag.field` (FR-006.8) — so the two shapes must be
+        // told apart before Gate 7's check runs, or a generated record is
+        // rejected as "not a VARCHAR structure".
+        //
+        // Not in the plan's component list. Recorded as a deviation: the plan
+        // said re-parse the generated text through decl.cc, and did not notice
+        // decl.cc would have to learn a second shape to do it.
+        //
+        // The interior is parsed by recursing into this same function and
+        // prefixing each harvested name with the variable's, so a nested
+        // VARCHAR group inside a record goes down Gate 7's path unchanged.
+        if (t[i].text == "struct" && i + 2 < t.size() &&
+            t[i + 1].text != "{" && t[i + 2].text == "{") {
+            std::size_t open = i + 2, depth = 0, j = open;
+            for (; j < t.size(); ++j) {
+                if (t[j].text == "{") ++depth;
+                else if (t[j].text == "}") { if (--depth == 0) break; }
+            }
+            if (j >= t.size() || j + 1 >= t.size()) {
+                d.error("ESQLC-2003", t[i].pos,
+                        "unterminated structure declaration");
+                break;
+            }
+            const std::string var = t[j + 1].text;
+            // Rebuild the interior text from its tokens. Spacing is
+            // insignificant to the tokenizer, and `[`/`]`/`;` must not be
+            // glued to their neighbours.
+            std::string inner;
+            for (std::size_t z = open + 1; z < j; ++z) {
+                inner += t[z].text;
+                inner += ' ';
+            }
+            std::vector<HostVar> fields;
+            parse_declare_section(inner, t[i].pos, fields, d);
+            for (auto &f : fields) {
+                f.name = var + "." + f.name;      // FR-006.8
+                out.push_back(f);
+            }
+            i = j + 2;
+            while (i < t.size() && t[i].text != ";") ++i;
+            continue;
+        }
+
         if (t[i].text == "struct") {
             Pos sp = t[i].pos;
             // T864 — a moving cursor rather than fixed offsets.

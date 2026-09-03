@@ -21,6 +21,7 @@ static const Handler kHandlers[] = {
     {"INCLUDE SQLCA",         PosClass::Decl, nullptr},   // Gate 4
     {"INCLUDE STRUCTURES",    PosClass::Decl, nullptr},   // Gate 5: version selection
     {"INCLUDE SQLSA",         PosClass::Decl, nullptr},   // Gate 5
+    {"INVOKE",                PosClass::Decl, nullptr},   // Gate 9
     {"SELECT",                PosClass::Exec, nullptr},   // Gate 2: single-row only
     {"DECLARE CURSOR",        PosClass::Decl, nullptr},   // Gate 3: read-only
     {"OPEN",                  PosClass::Exec, nullptr},
@@ -33,7 +34,6 @@ static const Handler kHandlers[] = {
     // FOR UPDATE and WHERE CURRENT OF are refused inside their handlers rather
     // than here: both are clauses of a statement, not keywords of their own,
     // so the dispatch table cannot see them.
-    {"INVOKE",             PosClass::Decl, "006 (INVOKE schema generation)"},
     {"INCLUDE SQLDA",      PosClass::Decl, "007 (dynamic SQL)"},
     {"PREPARE",            PosClass::Exec, "007 (dynamic SQL)"},
     {"EXECUTE",            PosClass::Exec, "007 (dynamic SQL)"},

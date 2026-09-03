@@ -243,3 +243,96 @@ The slice's ten, plus:
 13. `DIV-056` resolved; `DIV-055` narrowed.
 14. `ESQLC-6005`'s unreachability recorded next to `ESQLC-2015`'s.
 15. `docs/traceability.md` 006 rows moved off `spec`.
+
+---
+
+## Implementation report — 2026-09-03
+
+11/11 ctest, 55 Tier 2 cases, 169 Tier 1 assertions, 35 negatives, 44
+diagnostics registered. All six Phase D′ mutations caught, each with the
+mutation verified present and the binary verified changed by content hash.
+
+### Two components the plan did not list
+
+**`decl.cc` had to learn a second structure shape.** The plan said re-parse the
+generated text through `decl.cc`, and did not notice that `decl.cc` knows
+exactly one structure shape — Gate 7's anonymous `struct { short len; char
+val[n]; }`. A generated *tagged* record went straight into that check and came
+out as `ESQLC-2003` "not a VARCHAR structure".
+
+Tagged records are now recognised before Gate 7's check runs, and their interior
+is parsed by **recursing into `parse_declare_section` and prefixing each
+harvested name with the variable's** — so a nested `VARCHAR` group inside a
+record goes down Gate 7's path unchanged, and `:tag.field` (FR-006.8) falls out
+of the prefixing rather than needing its own mechanism.
+
+**`main.cc` had to accept `--schema` before Phase B could run.** Reported at
+Phase A: a harness cannot pass an option the tool rejects with exit 2, and no
+requirement says "accept an option", so accepting-and-ignoring it is enabling
+work rather than requirement implementation. T965 gave it meaning.
+
+### The clause cannot survive into emitted C, and that took a build to see
+
+FR-006.2b says `CHARACTER SET` is emitted inline in the field declaration, and
+§2 p.2-22 shows it. But Gate 8 established the clause is a **NonStop C compiler
+extension** (§1 p.1-2) that gcc and clang lack, so it is stripped on the way
+out — exactly as a hand-written one is.
+
+Order matters and cost a build: **parse the clause-bearing text, then emit the
+stripped text.** Stripping first loses the character set silently.
+
+Three Phase B assertions were checking for the clause in emitted C, where it
+cannot appear. They now check the **descriptor's** charset instead, which is
+where the association is actually carried and is the stronger check anyway: it
+proves the generator wrote a clause the parser read back. `invoke_charset`
+asserts id 2 for `ISO88592` and `invoke_varchar` asserts id 51 for `KSC5601`.
+
+### `DESC_RE` predated dotted host variables
+
+The assertion harness's descriptor regex has used `&(\w+)` since Gate 1, and
+`\w` does not match a dot — so every generated `parts_rec.part_num` descriptor
+was invisible and four assertions failed against working code. Widened to
+`[\w.]+`, which only matches more and cannot hide a previous gate's failure.
+
+### `ESQLC-6006` is redundant, and that makes three
+
+The dispatch table already reports `ESQLC-1008` ("'INVOKE' must appear in
+declaration position") with file, line and column, so a per-construct duplicate
+gives a reader two things to look up and a maintainer two places to keep in
+step. `ESQLC-1008` is kept and `ESQLC-6006` is marked redundant.
+
+**002's spec now carries one note covering all three cases** rather than three
+footnotes: `ESQLC-2015` unreachable (Gate 8), `ESQLC-6005` unreachable by
+design, `ESQLC-6006` redundant. The pattern worth watching is a registry
+accumulating codes that can never fire — each individually defensible, and
+collectively making the registry a worse guide than it looks. `diag_registry`
+checks every *emitted* code is registered; nothing checks the converse, and
+these three are why that gap is now known.
+
+### The exit criterion that mattered
+
+`abi_isolation` unchanged. **The preprocessor's dependency set is the same as it
+was at Gate 1** — standard headers only, no MariaDB library, no socket — while
+`INVOKE` reads a schema. NFR-006.2's optional-by-cache is what made that
+possible, and a mutation making the preprocessor open a socket is in the table
+so the claim stays checked rather than assumed.
+
+### Not proved, as scoped
+
+Live schema access: the cache is hand-written to match `schema.sql` because
+there is no capture tool, which is why SD-15 stays provisional — the format has
+one producer and one consumer, both written here.
+
+**A stale cache remains undetectable**, per SD-16, and is the slice's largest
+exposure: a program built against a cache that no longer matches the database
+generates wrong structures and compiles cleanly. Only the `!captured` timestamp
+in generated output makes it diagnosable afterwards.
+
+`NCHAR` out on `KANJI`. `PREFIX`/`SUFFIX` out on 006 Q2. MAP DEFINE out on
+`DIV-002` — refused with `ESQLC-1012` naming the dependency. Protection views
+untouched (006 Q5). FR-006.7's listing output waits on 001.
+
+A column named `int` landed under `ESQLC-6004` as the plan hoped, with the
+message naming both the column and that the generated identifier is a C keyword
+— so the error names the customer's column rather than pointing at generated
+text.
