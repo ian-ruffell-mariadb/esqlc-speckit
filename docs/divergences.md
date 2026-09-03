@@ -648,3 +648,30 @@ into `A1C6A2AEA1C63F` — seven bytes ending in the `?` substitution. Every
 fixture through Gate 7 is ASCII, where that transcoding is the identity, so the
 guarantee held by accident and was never tested above 0x7F. This is a
 correction to what those gates claimed, not a new limitation.
+
+## DIV-056 — The 30/31-character indicator collision is diagnosed, not reproduced
+
+**Status:** proposed · **Feature:** 006 · **Citation:** `[SQLPM/C §2 p.2-22]`
+
+**NonStop:** `INVOKE` names a generated indicator by appending `_I` to the
+column name. §2 p.2-22's own output shows the appended form. For a column name
+of 30 or 31 characters, SQL/MP truncates the suffix rather than the name, so the
+indicator's name becomes identical to the host variable's.
+
+**Here:** refused at preprocess time with `ESQLC-6007`, naming the column and
+its length.
+
+**Rationale:** the behaviour cannot be reproduced even in principle. Two members
+of one structure with one identifier is not valid C — on NonStop either — so
+whatever SQL/MP emits at those lengths, a C compiler cannot have accepted a
+structure with a genuine collision. Generating it here would produce a unit that
+does not compile, with the error pointing at generated text rather than at the
+customer's column name. Refusing names the actual cause.
+
+**Detection:** a nullable column whose name is 30 or 31 characters long, invoked
+under the default suffix, is refused rather than generated.
+
+**Migration:** shorten the column name, or supply an explicit `SUFFIX` — which
+is FR-006.5a and out of Gate 9's scope, so for now shortening is the only route.
+A program that relies on the collided name cannot have compiled on NonStop
+either, so there is nothing working to preserve.

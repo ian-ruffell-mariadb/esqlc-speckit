@@ -63,9 +63,12 @@ this is the fixture that proves generation is not just text.
 (FR-006.5, FR-006.5b). A structure with an indicator for every column would
 look right and be wrong.
 
-**D — the 30/31-character truncation.** FR-006.5c: at those lengths SQL/MP
-truncates the `_I` suffix rather than the name. A quirk, faithfully reproduced,
-because a program built on NonStop will have the truncated name in its source.
+**D — the 30/31-character collision, diagnosed.** FR-006.5c: at those lengths
+SQL/MP truncates the `_I` suffix, producing an indicator whose name **equals its
+host variable's**. This slice document originally said to reproduce it. That was
+wrong, and FR-006.5c already said so: two struct members with one identifier is
+not valid C, on NonStop either, so the behaviour cannot be reproduced even in
+principle. `ESQLC-6007` refuses it. `DIV-056`.
 
 **E — a `VARCHAR` column.** FR-006.4 generates the nested `short len; char
 val[]` structure — the shape Gate 7 taught the preprocessor to *read*, now
@@ -108,14 +111,22 @@ carried. Two new.
   and `width` is `capacity - 1`. Narrows nothing; still assumes
   `CHAR_AS_STRING`. **Now also governs what `INVOKE` generates**, which makes
   FR-006.3 and 001 Q2 the same question seen twice.
-- **SD-15 (new)** — the schema cache is a **committed JSON file** at a path the
-  pragma or a compiler option names, and the preprocessor reads only that.
-  Narrows 006 Q4. Committed rather than generated at build time because
-  FR-006.7 wants a program's assumptions auditable and a build must be
-  reproducible without network access; JSON because the project already reads
-  `manual/pages.json` and because a schema change should show up in review as a
-  diff. **Provisional** — the capture tool's own shape is out of scope, so
-  nothing yet proves the format survives a second consumer.
+- **SD-15 (new, amended at plan stage)** — the schema cache is a **committed
+  tab-separated file** named by a compiler option, and the preprocessor reads
+  only that. Narrows 006 Q4. Committed rather than built because FR-006.7 wants
+  a program's assumptions auditable and a build must be reproducible without
+  network access.
+
+  **Originally JSON, and changed for a dependency reason.** The preprocessor has
+  zero third-party dependencies across eight gates — only standard headers — so
+  JSON meant either vendoring a library or hand-writing ~150 lines of parser as
+  new attack surface for a file holding five fields per column. A tab-separated
+  line format parses in about thirty lines, is *more* diffable in review than
+  JSON, and keeps the dependency set empty. Only the encoding moved; the
+  reasoning did not.
+
+  **Provisional** — the capture tool is out of scope, so nothing yet proves the
+  format survives a second consumer or a real schema's variety.
 - **SD-16 (new)** — **the preprocessor cannot detect a stale cache and does not
   pretend to.** It records the cache's capture timestamp in generated output
   (FR-006.5d) so a mismatch is diagnosable after the fact, and staleness
@@ -138,9 +149,16 @@ carried. Two new.
   descriptors from them exactly as it does for hand-written ones, so there is
   one path to be right rather than two. It also means Gate 7's and Gate 8's
   parsers are the test of what Gate 9 emits.
-- **Where the indicator lives.** Inside the generated structure, as a sibling
-  field. §2 p.2-22's example puts it there, and it keeps `:tag.weight_I`
-  addressable by the same `:struct.field` rule as everything else.
+- **Where the indicator lives.** Inside the generated structure, **immediately
+  before** the field it belongs to — FR-006.5 says "precedes its host variable"
+  and §2 p.2-22's output confirms it. "Sibling field" as this document first put
+  it was vague enough to be implemented either way, and the order is a published
+  detail a program's source depends on.
+
+  It is also spelled `_i` in generated C, not `_I`: FR-006.5b appends `_I` to
+  the catalogue name and FR-006.2 lowercases the identifier, and every indicator
+  in p.2-22 reads `_i`. A fixture asserting `_I` would pass a wrong
+  implementation.
 
 ## Open-question avoidance
 
